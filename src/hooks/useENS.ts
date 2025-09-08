@@ -775,6 +775,7 @@ export function useTransferDomain() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
+  const { address } = useAccount()
   const { writeContract, data: hash } = useWriteContract()
   const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
 
@@ -815,48 +816,97 @@ export function useTransferDomain() {
       console.log('Registry owner:', registryOwner)
       console.log('NameWrapper address:', ENS_CONTRACTS.NAME_WRAPPER)
       
-      // Nếu owner là NameWrapper, sử dụng NameWrapper transfer
+      // Nếu owner là NameWrapper, kiểm tra BaseRegistrar ownership
       if (registryOwner.toLowerCase() === ENS_CONTRACTS.NAME_WRAPPER.toLowerCase()) {
-        console.log('Domain is wrapped in NameWrapper, using NameWrapper setRecord')
+        console.log('Domain is wrapped in NameWrapper, checking BaseRegistrar ownership')
         
-        // Lấy resolver hiện tại
-        const currentResolver = await publicClient.readContract({
-          address: ENS_CONTRACTS.REGISTRY,
-          abi: ENS_REGISTRY_ABI,
-          functionName: 'resolver',
-          args: [node]
-        })
+        // Tính tokenId từ label hash
+        const labelHash = keccak256(encodePacked(['string'], [domainName.split('.')[0]]))
+        const tokenId = BigInt(labelHash)
         
-        // Lấy TTL hiện tại
-        const currentTTL = await publicClient.readContract({
-          address: ENS_CONTRACTS.REGISTRY,
-          abi: ENS_REGISTRY_ABI,
-          functionName: 'ttl',
-          args: [node]
-        })
-        
-        console.log('Current resolver:', currentResolver)
-        console.log('Current TTL:', currentTTL)
-        
-        writeContract({
-          address: ENS_CONTRACTS.NAME_WRAPPER,
+        // Kiểm tra owner của token trong BaseRegistrar
+        const baseRegistrarOwner = await publicClient.readContract({
+          address: ENS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
           abi: [
             {
-              "inputs": [
-                {"internalType": "bytes32", "name": "node", "type": "bytes32"},
-                {"internalType": "address", "name": "owner", "type": "address"},
-                {"internalType": "address", "name": "resolver", "type": "address"},
-                {"internalType": "uint64", "name": "ttl", "type": "uint64"}
-              ],
-              "name": "setRecord",
-              "outputs": [],
-              "stateMutability": "nonpayable",
+              "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+              "name": "ownerOf",
+              "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+              "stateMutability": "view",
               "type": "function"
             }
           ],
-          functionName: 'setRecord',
-          args: [node, newOwner as `0x${string}`, currentResolver, currentTTL]
+          functionName: 'ownerOf',
+          args: [tokenId]
         })
+        
+        console.log('BaseRegistrar token owner:', baseRegistrarOwner)
+        console.log('Current user:', address)
+        
+        // Nếu BaseRegistrar owner là user, sử dụng BaseRegistrar transfer
+        if (baseRegistrarOwner.toLowerCase() === address?.toLowerCase()) {
+          console.log('Using BaseRegistrar transferFrom')
+          
+          writeContract({
+            address: ENS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
+            abi: [
+              {
+                "inputs": [
+                  {"internalType": "address", "name": "from", "type": "address"},
+                  {"internalType": "address", "name": "to", "type": "address"},
+                  {"internalType": "uint256", "name": "tokenId", "type": "uint256"}
+                ],
+                "name": "transferFrom",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+              }
+            ],
+            functionName: 'transferFrom',
+            args: [address as `0x${string}`, newOwner as `0x${string}`, tokenId]
+          })
+        } else {
+          console.log('Using NameWrapper setRecord')
+          
+          // Lấy resolver hiện tại
+          const currentResolver = await publicClient.readContract({
+            address: ENS_CONTRACTS.REGISTRY,
+            abi: ENS_REGISTRY_ABI,
+            functionName: 'resolver',
+            args: [node]
+          })
+          
+          // Lấy TTL hiện tại
+          const currentTTL = await publicClient.readContract({
+            address: ENS_CONTRACTS.REGISTRY,
+            abi: ENS_REGISTRY_ABI,
+            functionName: 'ttl',
+            args: [node]
+          })
+          
+          console.log('Current resolver:', currentResolver)
+          console.log('Current TTL:', currentTTL)
+          
+          writeContract({
+            address: ENS_CONTRACTS.NAME_WRAPPER,
+            abi: [
+              {
+                "inputs": [
+                  {"internalType": "bytes32", "name": "node", "type": "bytes32"},
+                  {"internalType": "address", "name": "owner", "type": "address"},
+                  {"internalType": "address", "name": "resolver", "type": "address"},
+                  {"internalType": "uint64", "name": "ttl", "type": "uint64"}
+                ],
+                "name": "setRecord",
+                "outputs": [],
+                "stateMutability": "nonpayable",
+                "type": "function"
+              }
+            ],
+            functionName: 'setRecord',
+            args: [node, newOwner as `0x${string}`, currentResolver, currentTTL]
+          })
+        }
       } else {
         console.log('Domain is directly owned, using Registry transfer')
         
