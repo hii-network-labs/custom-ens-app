@@ -1,0 +1,52 @@
+Registration error: ContractFunctionExecutionError: Execution reverted for an unknown reason.
+
+Raw Call Arguments:
+  to:    0x0596BF7126D91241fC49adeDafAc859DF45eE0d8
+  data:  ...
+ 
+Contract Call:
+  address:   0x0596BF7126D91241fC49adeDafAc859DF45eE0d8
+  function:  makeCommitment(string name, address owner, uint256 duration, bytes32 secret, address resolver, bytes[] data, bool reverseRecord, uint32 fuses, uint64 wrapperExpiry)
+  args:                    (testprivkey123, 0xb769BEFa05c7D9B08062630E351e865d3F49c56D, 31536000, 0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef, 0xaad90fD5a09629c345BB670854144d7834cfDAa2, ["0xd5fa2b00c152b705822bd6f068a0facdf46a60fcb26282292eb10536e5b6cccb59cb2cc5000000000000000000000000b769befa05c7d9b08062630e351e865d3f49c56d"], true, 0, 0)
+
+Docs: https://viem.sh/docs/contract/readContract
+Details: execution reverted
+Version: viem@2.33.3
+    at getContractError (getContractError.js:39:12)
+    at readContract (readContract.js:67:98)
+    at async handleRegister (PrivateKeyRegistrationTest.tsx:127:30)Caused by: CallExecutionError: Execution reverted for an unknown reason.
+
+Raw Call Arguments:
+  to:    0x0596BF7126D91241fC49adeDafAc859DF45eE0d8
+  data:  ...
+
+Details: execution reverted
+Version: viem@2.33.3
+    at getCallError (getCallError.js:18:12)
+    at call (call.js:174:91)
+    at async readContract (readContract.js:54:26)
+    at async handleRegister (PrivateKeyRegistrationTest.tsx:127:30)Caused by: ExecutionRevertedError: Execution reverted for an unknown reason.
+
+Details: execution reverted
+Version: viem@2.33.3
+    at getNodeError (getNodeError.js:31:16)
+    at eval (getCallError.js:13:85)
+    at getCallError (getCallError.js:17:7)
+    at call (call.js:174:91)
+    at async readContract (readContract.js:54:26)
+    at async handleRegister (PrivateKeyRegistrationTest.tsx:127:30)Caused by: InvalidInputRpcError: Missing or invalid parameters.
+Double check you have provided the correct parameters.
+
+URL: http://103.69.99.57:8545
+Request body: {"method":"eth_call","params":[{"data":"...","to":"0x0596BF7126D91241fC49adeDafAc859DF45eE0d8"},"latest"]}
+
+Details: execution reverted
+Version: viem@2.33.3
+    at delay.count.count (buildRequest.js:62:31)
+    at async attemptRetry (withRetry.js:17:30)Caused by: RpcRequestError: RPC Request failed.
+
+URL: http://103.69.99.57:8545
+Request body: {"method":"eth_call","params":[{"data":"...","to":"0x0596BF7126D91241fC49adeDafAc859DF45eE0d8"},"latest"]}
+
+Details: execution reverted
+Version: viem@2.33.3

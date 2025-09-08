@@ -1,0 +1,760 @@
+import { useState, useCallback, useEffect } from 'react'
+import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useBalance, useEstimateGas, usePublicClient } from 'wagmi'
+import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFunctionData } from 'viem'
+import { getBytes } from 'ethers'
+import { ENS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, ENS_REGISTRY_ABI } from '@/config/contracts'
+import ETHRegistrarControllerABI from '@/contracts/ABIs/ETHRegistrarController.json'
+import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
+import PublicResolverABI from '@/contracts/ABIs/PublicResolver.json'
+
+// Function sleep giống như NestJS
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// Function để tạo resolver data giống như NestJS
+async function makeData(domain: string, address: string, email?: string): Promise<readonly `0x${string}`[]> {
+  try {
+    const node = namehash(domain)
+    const normalizedAddress = getAddress(address)
+    
+    // Encode setAddr function call giống như NestJS - sử dụng ABI từ PublicResolver
+    const encodedSetAddr = encodeFunctionData({
+      abi: PublicResolverABI.abi,
+      functionName: 'setAddr',
+      args: [
+        node,
+        BigInt(60), // ETH coin type
+        normalizedAddress
+      ]
+    })
+
+    const dataList: `0x${string}`[] = [encodedSetAddr]
+
+    if (email) {
+      // Encode setText function call giống như NestJS - sử dụng ABI từ PublicResolver
+      const encodedSetText = encodeFunctionData({
+        abi: PublicResolverABI.abi,
+        functionName: 'setText',
+        args: [
+          node,
+          'email',
+          email
+        ]
+      })
+      dataList.push(encodedSetText)
+    }
+
+    return dataList
+  } catch (error) {
+    console.error('Lỗi khi tạo data cho tên miền:', domain, error)
+    throw new Error(`Không thể tạo data cho tên miền ${domain}: ${error}`)
+  }
+}
+
+// Hook để kiểm tra commitment validity
+export function useCommitmentValidity(commitmentHash: string | null) {
+  const result = useReadContract({
+    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    abi: ETHRegistrarControllerABI.abi,
+    functionName: 'commitments',
+    args: [commitmentHash as `0x${string}`],
+    query: {
+      enabled: !!commitmentHash
+    }
+  })
+
+  // Debug commitment validity
+  console.log('=== COMMITMENT VALIDITY HOOK ===')
+  console.log('Commitment hash:', commitmentHash)
+  console.log('Is enabled:', !!commitmentHash)
+  console.log('Result:', result)
+  console.log('Data:', result.data)
+  console.log('Is loading:', result.isLoading)
+  console.log('Error:', result.error)
+  console.log('================================')
+
+  return result
+}
+
+// Hook để lấy thông tin timing từ contract
+export function useCommitmentTiming() {
+  const minAgeResult = useReadContract({
+    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    abi: ETHRegistrarControllerABI.abi,
+    functionName: 'minCommitmentAge'
+  })
+
+  const maxAgeResult = useReadContract({
+    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    abi: ETHRegistrarControllerABI.abi,
+    functionName: 'maxCommitmentAge'
+  })
+
+  return {
+    minCommitmentAge: minAgeResult.data as bigint | undefined,
+    maxCommitmentAge: maxAgeResult.data as bigint | undefined,
+    isLoading: minAgeResult.isLoading || maxAgeResult.isLoading,
+    error: minAgeResult.error || maxAgeResult.error
+  }
+}
+
+// Hook để kiểm tra domain availability
+export function useDomainAvailability(name: string) {
+  const result = useReadContract({
+    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    abi: ETH_REGISTRAR_CONTROLLER_ABI,
+    functionName: 'available',
+    args: [name],
+    chainId: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!), // Hii Network chain ID
+    query: {
+      enabled: !!name && name.length >= 3,
+      retry: 3,
+      retryDelay: 1000
+    }
+  })
+
+  // Debug domain availability
+  console.log('=== DOMAIN AVAILABILITY HOOK ===')
+  console.log('Domain name:', name)
+  console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
+  console.log('Is enabled:', !!name && name.length >= 3)
+  console.log('Result:', result)
+  console.log('Data:', result.data)
+  console.log('Is loading:', result.isLoading)
+  console.log('Error:', result.error)
+  console.log('Error details:', result.error?.message)
+  console.log('================================')
+
+  return result
+}
+
+// Hook để lấy danh sách domains của user
+export function useUserDomains() {
+  const { address } = useAccount()
+  const [domains, setDomains] = useState<Domain[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchDomains = useCallback(async () => {
+    if (!address) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const userDomains = await fetchDomainsByOwner(address)
+      setDomains(userDomains)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch domains')
+    } finally {
+      setLoading(false)
+    }
+  }, [address])
+
+  return {
+    domains,
+    loading,
+    error,
+    refetch: fetchDomains
+  }
+}
+
+// Hook để lấy giá đăng ký domain
+export function useRentPrice(name: string, duration: number) {
+  console.log('=== RENT PRICE HOOK ===')
+  console.log('Name:', name)
+  console.log('Duration:', duration)
+  console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
+  console.log('Duration in seconds:', BigInt(duration * 365 * 24 * 60 * 60))
+  console.log('Name length:', name?.length)
+  console.log('Duration value:', duration)
+  console.log('Enabled:', !!name && name.length >= 3 && duration > 0)
+  console.log('========================')
+  
+  const result = useReadContract({
+    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    abi: ETH_REGISTRAR_CONTROLLER_ABI,
+    functionName: 'rentPrice',
+    args: [name, BigInt(duration * 365 * 24 * 60 * 60)], // duration in seconds
+    chainId: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!), // Hii Network chain ID
+    query: {
+      enabled: !!name && name.length >= 3 && duration > 0,
+      retry: 3,
+      retryDelay: 1000
+    }
+  })
+  
+  console.log('=== RENT PRICE RESULT ===')
+  console.log('Result:', result)
+  console.log('Data:', result.data)
+  console.log('Error:', result.error)
+  console.log('Error message:', result.error?.message)
+  console.log('==========================')
+  
+  return result
+}
+
+// Hook để đăng ký domain mới
+export function useRegisterDomain() {
+  const { address: account, isConnected, status } = useAccount()
+  const { data: balance } = useBalance({ address: account })
+  const publicClient = usePublicClient()
+
+
+  const [isCommitting, setIsCommitting] = useState(false)
+  const [isRegistering, setIsRegistering] = useState(false)
+  const [commitmentHash, setCommitmentHash] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [estimatedGas, setEstimatedGas] = useState<bigint | null>(null)
+  
+  const { writeContract: writeCommit, data: commitHash } = useWriteContract()
+  const { writeContract: writeRegister, data: registerHash } = useWriteContract()
+  
+  const { isLoading: isCommitConfirming, isSuccess: isCommitSuccess } = useWaitForTransactionReceipt({
+    hash: commitHash,
+  })
+  
+  const { isLoading: isRegisterConfirming, isSuccess: isRegisterSuccess, isError: isRegisterError, error: registerError } = useWaitForTransactionReceipt({
+    hash: registerHash,
+  })
+
+  // Reset states khi commit thành công
+  useEffect(() => {
+    if (isCommitSuccess) {
+      setIsCommitting(false)
+    }
+  }, [isCommitSuccess])
+
+  // Reset states khi register thành công hoặc thất bại
+  useEffect(() => {
+    if (isRegisterSuccess) {
+      setIsRegistering(false)
+    }
+    if (isRegisterError) {
+      setIsRegistering(false)
+      const errorMessage = registerError?.message || 'Registration failed. Please try again.'
+      
+      console.log('=== TRANSACTION ERROR DETAILED ===')
+      console.log('Error message:', errorMessage)
+      console.log('Full error object:', registerError)
+      console.log('Error name:', registerError?.name)
+      console.log('Error stack:', registerError?.stack)
+      console.log('==================================')
+      
+      // Xử lý lỗi insufficient funds cụ thể
+      if (errorMessage.includes('insufficient funds') || errorMessage.includes('insufficient balance')) {
+        setError('Giao dịch thất bại: Số dư không đủ. Vui lòng kiểm tra lại số dư và thử lại.')
+      } else if (errorMessage.includes('gas')) {
+        setError(`Giao dịch thất bại: Lỗi gas. ${errorMessage}`)
+      } else if (errorMessage.includes('nonce')) {
+        setError(`Giao dịch thất bại: Lỗi nonce. ${errorMessage}`)
+      } else if (errorMessage.includes('revert')) {
+        setError(`Giao dịch thất bại: Contract revert. ${errorMessage}`)
+      } else if (errorMessage.includes('user rejected')) {
+        setError('Giao dịch bị hủy bởi người dùng.')
+      } else {
+        setError(`Giao dịch thất bại: ${errorMessage}`)
+      }
+    }
+  }, [isRegisterSuccess, isRegisterError, registerError])
+
+
+
+  // Bước 1: Tạo commitment
+  const makeCommitment = useCallback(async (
+    name: string,
+    owner: string,
+    duration: number,
+    secret: string
+  ) => {
+    if (!owner || owner === '0x0000000000000000000000000000000000000000') {
+      setError('Please connect your wallet first or wallet address is invalid')
+      return
+    }
+    
+    if (!isConnected) {
+      setError('Wallet is not connected. Please connect your wallet first.')
+      return
+    }
+
+    if (!account) {
+      setError('Account not available. Please connect your wallet first.')
+      return
+    }
+    
+    setError(null)
+    setIsCommitting(true)
+    
+    try {
+      console.log('=== FRONTEND COMMITMENT DEBUG ===')
+      console.log('Input params:', { name, owner, duration, secret })
+      
+      // Tạo resolver data giống như NestJS
+      const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
+      console.log('Resolver data created:', resolverData)
+
+      // Sử dụng contract function để tạo commitment hash (giống backend)
+      if (!publicClient) {
+        throw new Error('Public client not available')
+      }
+
+      const commitmentHash = await publicClient.readContract({
+        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        abi: ETHRegistrarControllerABI.abi,
+        functionName: 'makeCommitment',
+        args: [
+          name,
+          owner as `0x${string}`,
+          BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
+          keccak256(encodePacked(['string'], [secret])),
+          ENS_CONTRACTS.PUBLIC_RESOLVER,
+          resolverData,
+          true, // Set reverseRecord to true
+          0
+        ]
+      })
+      
+      console.log('=== COMMITMENT HASH COMPARISON ===')
+      console.log('Contract-generated commitment hash:', commitmentHash)
+      console.log('Commit params:', { 
+        name, 
+        owner, 
+        duration: BigInt(60 * 60 * 24 * 30).toString(),
+        secretHash: keccak256(encodePacked(['string'], [secret])),
+        resolver: ENS_CONTRACTS.PUBLIC_RESOLVER,
+        dataLength: resolverData.length,
+        reverseRecord: true,
+        fuses: 0
+      })
+      console.log('RPC URL:', process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC)
+      console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
+
+      setCommitmentHash(commitmentHash)
+      
+      // Gửi commitment transaction
+      writeCommit({
+        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        abi: ETHRegistrarControllerABI.abi,
+        functionName: 'commit',
+        args: [commitmentHash],
+        gas: BigInt(50000),
+        account: account as `0x${string}`
+      })
+    } catch (err) {
+      console.error('=== COMMITMENT ERROR ===')
+      console.error('Error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to make commitment')
+      setIsCommitting(false)
+    }
+  }, [writeCommit, isConnected, account, publicClient])
+
+  // Bước 2: Đăng ký domain sau khi chờ 60 giây
+  const registerDomain = useCallback(async (
+    name: string,
+    owner: string,
+    duration: number,
+    secret: string,
+    price: bigint,
+    skipBalanceCheck: boolean = false
+  ) => {
+    if (!commitmentHash) {
+      setError('No commitment found. Please commit first.')
+      return
+    }
+
+    if (!isConnected) {
+      setError('Wallet is not connected. Please connect your wallet first.')
+      return
+    }
+
+    if (!account) {
+      setError('Account not available. Please connect your wallet first.')
+      return
+    }
+
+    if (!owner || owner === '0x0000000000000000000000000000000000000000') {
+      setError('Please connect your wallet first or wallet address is invalid')
+      return
+    }
+
+    // Đảm bảo owner address khớp với account đã kết nối
+    if (owner.toLowerCase() !== account.toLowerCase()) {
+      setError('Owner address must match connected wallet address')
+      return
+    }
+
+    if (!balance && !skipBalanceCheck) {
+      setError('Unable to check balance. Please try again.')
+      return
+    }
+
+    setError(null)
+    setIsRegistering(true)
+    
+    try {
+      const secretHash = keccak256(encodePacked(['string'], [secret]))
+      
+      // Kiểm tra commitment age trước khi register
+      if (publicClient && commitmentHash) {
+        try {
+          console.log('=== COMMITMENT AGE CHECK ===')
+          console.log('Checking commitment hash:', commitmentHash)
+          
+          const commitmentTimestamp = await publicClient.readContract({
+            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            abi: ETH_REGISTRAR_CONTROLLER_ABI,
+            functionName: 'commitments',
+            args: [commitmentHash as `0x${string}`]
+          })
+          
+          const minCommitmentAge = await publicClient.readContract({
+            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            abi: ETHRegistrarControllerABI.abi,
+            functionName: 'minCommitmentAge'
+          }) as bigint
+          
+          const maxCommitmentAge = await publicClient.readContract({
+            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            abi: ETHRegistrarControllerABI.abi,
+            functionName: 'maxCommitmentAge'
+          }) as bigint
+          
+          const currentTime = BigInt(Math.floor(Date.now() / 1000))
+          const commitmentAge = currentTime - commitmentTimestamp
+          const validStart = commitmentTimestamp + minCommitmentAge
+          const validEnd = commitmentTimestamp + maxCommitmentAge
+          
+          console.log('Commitment timing details:', {
+            commitmentHash,
+            commitmentTimestamp: commitmentTimestamp.toString(),
+            currentTime: currentTime.toString(),
+            commitmentAge: commitmentAge.toString(),
+            minCommitmentAge: minCommitmentAge.toString(),
+            maxCommitmentAge: maxCommitmentAge.toString(),
+            validWindow: `${validStart.toString()} - ${validEnd.toString()}`,
+            isReady: commitmentAge >= minCommitmentAge,
+            isExpired: currentTime > validEnd,
+            isValid: commitmentAge >= minCommitmentAge && currentTime <= validEnd
+          })
+          
+          // Kiểm tra commitment có tồn tại không
+          if (commitmentTimestamp === 0n) {
+            throw new Error('Commitment not found or already used')
+          }
+          
+          // Kiểm tra commitment có hết hạn không
+          if (currentTime > validEnd) {
+            throw new Error(`Commitment expired. Valid window: ${validStart} - ${validEnd}, current: ${currentTime}`)
+          }
+          
+          // Đợi thêm 5 giây như NestJS để đảm bảo commitment đủ tuổi
+          const requiredAge = minCommitmentAge + BigInt(5)
+          if (commitmentAge < requiredAge) {
+            const waitTime = Number(requiredAge - commitmentAge)
+            console.log(`Đang đợi thời gian cam kết: ${waitTime} giây`)
+            setError(`Đang đợi commitment đủ tuổi... ${waitTime} giây`)
+            
+            // Đợi tự động như NestJS
+            await sleep(waitTime * 1000)
+            console.log('Commitment đã đủ tuổi, tiếp tục register...')
+          }
+        } catch (error) {
+          console.error('=== COMMITMENT AGE CHECK ERROR ===')
+          console.error('Error:', error)
+          throw new Error(`Commitment validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+      } else {
+        throw new Error('Public client or commitment hash not available')
+      }
+      
+      // Sửa logic tính toán gas - không tính gas cost vào total cost
+      // Chỉ tính rent price + buffer nhỏ cho gas
+      const gasBuffer = price / BigInt(20) // 5% buffer cho gas
+      const totalCost = price + gasBuffer
+      
+      // Gas limit cho register transaction - sử dụng gas estimate thực tế
+      let finalGasLimit = BigInt(500000) // Default gas limit
+      
+      try {
+        // Tạo resolver data giống như NestJS
+        const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
+
+        // Thử estimate gas cho register transaction
+        if (publicClient) {
+          const estimatedGas = await publicClient.estimateContractGas({
+            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            abi: ETHRegistrarControllerABI.abi,
+            functionName: 'register',
+            args: [
+              name,
+              owner as `0x${string}`,
+              BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
+              secretHash,
+              ENS_CONTRACTS.PUBLIC_RESOLVER,
+              resolverData,
+              true, // Set reverseRecord to true
+              0
+            ],
+            value: price,
+            account: account as `0x${string}`
+          })
+          finalGasLimit = (estimatedGas * BigInt(120)) / BigInt(100) // Thêm 20% như NestJS
+          console.log('Gas estimation successful:', estimatedGas.toString())
+        } else {
+          console.log('Public client not available, using default gas limit')
+        }
+      } catch (gasError) {
+        console.log('Gas estimation failed, using default:', gasError)
+        // Sử dụng default gas limit nếu estimation thất bại
+      }
+
+      // Debug chi tiết với gas calculation mới
+      console.log('=== DEBUG BALANCE CHECK ===')
+      console.log('Skip Balance Check:', skipBalanceCheck)
+      if (balance) {
+        console.log('Balance:', {
+          value: balance.value.toString(),
+          formatted: (Number(balance.value) / 10 ** 18).toFixed(6) + ' HII'
+        })
+        console.log('Price:', {
+          value: price.toString(),
+          formatted: (Number(price) / 10 ** 18).toFixed(6) + ' HII'
+        })
+        console.log('Gas Calculation:', {
+          finalGasLimit: finalGasLimit.toString(),
+          gasBuffer: gasBuffer.toString(),
+          formatted: (Number(gasBuffer) / 10 ** 18).toFixed(6) + ' HII'
+        })
+        console.log('Cost Calculation:', {
+          rentPrice: (Number(price) / 10 ** 18).toFixed(6) + ' HII',
+          gasBuffer: (Number(gasBuffer) / 10 ** 18).toFixed(6) + ' HII',
+          totalCost: (Number(totalCost) / 10 ** 18).toFixed(6) + ' HII'
+        })
+        console.log('Balance Check:', {
+          hasEnough: balance.value >= totalCost,
+          difference: (Number(balance.value - totalCost) / 10 ** 18).toFixed(6) + ' HII'
+        })
+      } else {
+        console.log('No balance data available')
+      }
+      console.log('==========================')
+
+      console.log('Register params:', {
+        name,
+        owner,
+        duration,
+        secret,
+        secretHash,
+        price: price.toString(),
+        balance: balance?.value.toString() || 'N/A',
+        gasBuffer: gasBuffer.toString(),
+        totalCost: totalCost.toString(),
+        skipBalanceCheck,
+        commitmentHash,
+        contractAddress: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        resolverAddress: ENS_CONTRACTS.PUBLIC_RESOLVER,
+        rpcUrl: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC,
+      })
+
+      // Kiểm tra số dư trước khi thực hiện giao dịch (chỉ khi không bỏ qua)
+      if (!skipBalanceCheck && balance && balance.value < totalCost) {
+        const shortfall = totalCost - balance.value
+        const shortfallFormatted = (Number(shortfall) / 10 ** 18).toFixed(6)
+        const balanceFormatted = (Number(balance.value) / 10 ** 18).toFixed(6)
+        const totalCostFormatted = (Number(totalCost) / 10 ** 18).toFixed(6)
+        
+        console.log('=== BALANCE CHECK FAILED ===')
+        console.log('Balance value:', balance.value.toString())
+        console.log('Total cost:', totalCost.toString())
+        console.log('Comparison:', balance.value < totalCost)
+        console.log('Balance < TotalCost:', balance.value < totalCost)
+        console.log('Balance === TotalCost:', balance.value === totalCost)
+        console.log('Balance > TotalCost:', balance.value > totalCost)
+        console.log('============================')
+        
+        // Thử với skip balance check nếu balance gần đủ
+        if (balance.value >= price) {
+          console.log('=== TRYING WITH SKIP BALANCE CHECK ===')
+          console.log('Balance is sufficient for rent price, trying with skip balance check')
+          return registerDomain(name, owner, duration, secret, price, true)
+        }
+        
+        setError(`Số dư không đủ. Số dư hiện tại: ${balanceFormatted} HII. Cần: ${totalCostFormatted} HII. Thiếu: ${shortfallFormatted} HII`)
+        setIsRegistering(false)
+        return
+      }
+
+      // Debug khi balance check pass
+      // if (!skipBalanceCheck && balance) {
+      //   console.log('=== BALANCE CHECK PASSED ===')
+      //   console.log('Balance value:', balance.value.toString())
+      //   console.log('Total cost:', totalCost.toString())
+      //   console.log('Balance >= TotalCost:', balance.value >= totalCost)
+      //   console.log('Proceeding with transaction...')
+      //   console.log('============================')
+      // }
+      
+      // console.log('=== CALLING WRITE REGISTER ===')
+      // console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
+      // console.log('Function name: register')
+      // console.log('Value:', price.toString())
+      // console.log('Gas:', finalGasLimit.toString())
+      // console.log('Account parameter:', account)
+      // console.log('Owner parameter:', owner)
+      // console.log('Args:', [
+      //   name,
+      //   owner as `0x${string}`,
+      //   BigInt(duration * 365 * 24 * 60 * 60),
+      //   secretHash,
+      //   ENS_CONTRACTS.PUBLIC_RESOLVER,
+      //   [],
+      //   false,
+      //   0,
+      //   BigInt(0)
+      // ])
+      // console.log('Current timestamp:', new Date().toISOString())
+      // console.log('Commitment age:', commitmentHash ? 'Available' : 'Not available')
+      // console.log('=============================')
+      
+      try {
+        // Tạo resolver data giống như NestJS
+        const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
+
+        console.log('=== REGISTER TRANSACTION DEBUG ===')
+        console.log('Register params:', {
+          name,
+          owner,
+          duration: BigInt(60 * 60 * 24 * 30).toString(),
+          secretHash,
+          resolver: ENS_CONTRACTS.PUBLIC_RESOLVER,
+          dataLength: resolverData.length,
+          reverseRecord: true,
+          fuses: 0,
+          value: price.toString(),
+          gas: finalGasLimit.toString(),
+          commitmentHash
+        })
+
+        writeRegister({
+          address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+          abi: ETHRegistrarControllerABI.abi,
+          functionName: 'register',
+          args: [
+            name,
+            owner as `0x${string}`,
+            BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
+            secretHash,
+            ENS_CONTRACTS.PUBLIC_RESOLVER,
+            resolverData as readonly `0x${string}`[],
+            true, // Set reverseRecord to true
+            0
+          ],
+          value: price, // Sử dụng giá gốc
+          gas: finalGasLimit, // Sử dụng final gas limit
+          account: account as `0x${string}` // Đảm bảo sử dụng đúng account
+        })
+        console.log('=== WRITE REGISTER CALLED SUCCESSFULLY ===')
+      } catch (writeError) {
+        console.log('=== WRITE REGISTER ERROR ===')
+        console.log('Error:', writeError)
+        console.log('Error message:', writeError instanceof Error ? writeError.message : 'Unknown error')
+        console.log('==========================')
+        setError(`Lỗi khi gửi giao dịch: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`)
+        setIsRegistering(false)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to register domain')
+      setIsRegistering(false)
+    }
+  }, [writeRegister, commitmentHash, balance, isConnected, account]);
+
+  return {
+    makeCommitment,
+    registerDomain,
+    isCommitting: isCommitting || isCommitConfirming,
+    isRegistering: isRegistering || isRegisterConfirming,
+    commitmentHash,
+    error,
+    commitHash,
+    registerHash,
+    estimatedGas
+  }
+}
+
+// Hook để gia hạn domain
+export function useRenewDomain() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const { writeContract, data: hash } = useWriteContract()
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+
+  const renewDomain = useCallback(async (
+    name: string,
+    duration: number,
+    price: bigint
+  ) => {
+    setError(null)
+    setLoading(true)
+    
+    try {
+      writeContract({
+        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        abi: ETH_REGISTRAR_CONTROLLER_ABI,
+        functionName: 'renew',
+        args: [name, BigInt(duration * 365 * 24 * 60 * 60)],
+        value: price
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to renew domain')
+      setLoading(false)
+    }
+  }, [writeContract])
+
+  return {
+    renewDomain,
+    loading: loading || isConfirming,
+    error,
+    hash
+  }
+}
+
+// Hook để chuyển ownership domain
+export function useTransferDomain() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const { writeContract, data: hash } = useWriteContract()
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+
+  const transferDomain = useCallback(async (
+    domainName: string,
+    newOwner: string
+  ) => {
+    setError(null)
+    setLoading(true)
+    
+    try {
+      // Tính toán node hash cho domain
+      const node = namehash(`${domainName}.hii`)
+      
+      writeContract({
+        address: ENS_CONTRACTS.REGISTRY,
+        abi: ENS_REGISTRY_ABI,
+        functionName: 'setOwner',
+        args: [node, newOwner as `0x${string}`]
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to transfer domain')
+      setLoading(false)
+    }
+  }, [writeContract])
+
+  return {
+    transferDomain,
+    loading: loading || isConfirming,
+    error,
+    hash
+  }
+}
