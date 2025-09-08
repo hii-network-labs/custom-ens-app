@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useBalance, useEstimateGas, usePublicClient } from 'wagmi'
-import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFunctionData } from 'viem'
+import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFunctionData, createPublicClient, http } from 'viem'
 import { getBytes } from 'ethers'
 import { ENS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, ENS_REGISTRY_ABI } from '@/config/contracts'
 import ETHRegistrarControllerABI from '@/contracts/ABIs/ETHRegistrarController.json'
@@ -789,12 +789,84 @@ export function useTransferDomain() {
       // Tính toán node hash cho domain
       const node = namehash(`${domainName}.hii`)
       
-      writeContract({
+      // Kiểm tra xem domain có được wrapped trong NameWrapper không
+      const publicClient = createPublicClient({
+        chain: {
+          id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
+          name: 'Hii Network',
+          network: 'hii-testnet',
+          nativeCurrency: { name: 'HII', symbol: 'HII', decimals: 18 },
+          rpcUrls: {
+            default: { http: [process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!] },
+            public: { http: [process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!] }
+          }
+        },
+        transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!)
+      })
+      
+      // Kiểm tra owner từ ENS Registry
+      const registryOwner = await publicClient.readContract({
         address: ENS_CONTRACTS.REGISTRY,
         abi: ENS_REGISTRY_ABI,
-        functionName: 'setOwner',
-        args: [node, newOwner as `0x${string}`]
+        functionName: 'owner',
+        args: [node]
       })
+      
+      console.log('Registry owner:', registryOwner)
+      console.log('NameWrapper address:', ENS_CONTRACTS.NAME_WRAPPER)
+      
+      // Nếu owner là NameWrapper, sử dụng NameWrapper transfer
+      if (registryOwner.toLowerCase() === ENS_CONTRACTS.NAME_WRAPPER.toLowerCase()) {
+        console.log('Domain is wrapped in NameWrapper, using NameWrapper setRecord')
+        
+        // Lấy resolver hiện tại
+        const currentResolver = await publicClient.readContract({
+          address: ENS_CONTRACTS.REGISTRY,
+          abi: ENS_REGISTRY_ABI,
+          functionName: 'resolver',
+          args: [node]
+        })
+        
+        // Lấy TTL hiện tại
+        const currentTTL = await publicClient.readContract({
+          address: ENS_CONTRACTS.REGISTRY,
+          abi: ENS_REGISTRY_ABI,
+          functionName: 'ttl',
+          args: [node]
+        })
+        
+        console.log('Current resolver:', currentResolver)
+        console.log('Current TTL:', currentTTL)
+        
+        writeContract({
+          address: ENS_CONTRACTS.NAME_WRAPPER,
+          abi: [
+            {
+              "inputs": [
+                {"internalType": "bytes32", "name": "node", "type": "bytes32"},
+                {"internalType": "address", "name": "owner", "type": "address"},
+                {"internalType": "address", "name": "resolver", "type": "address"},
+                {"internalType": "uint64", "name": "ttl", "type": "uint64"}
+              ],
+              "name": "setRecord",
+              "outputs": [],
+              "stateMutability": "nonpayable",
+              "type": "function"
+            }
+          ],
+          functionName: 'setRecord',
+          args: [node, newOwner as `0x${string}`, currentResolver, currentTTL]
+        })
+      } else {
+        console.log('Domain is directly owned, using Registry transfer')
+        
+        writeContract({
+          address: ENS_CONTRACTS.REGISTRY,
+          abi: ENS_REGISTRY_ABI,
+          functionName: 'setOwner',
+          args: [node, newOwner as `0x${string}`]
+        })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to transfer domain')
       setLoading(false)
