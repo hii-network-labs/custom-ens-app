@@ -16,8 +16,9 @@ export default function RegisterDomain({ onSuccess }: RegisterDomainProps) {
   const [domainName, setDomainName] = useState('')
   const [duration, setDuration] = useState(1)
   const [secret, setSecret] = useState('')
-  const [step, setStep] = useState<'form' | 'commit' | 'wait' | 'register'>('form')
+  const [step, setStep] = useState<'form' | 'commit' | 'wait' | 'register' | 'success'>('form')
   const [waitTime, setWaitTime] = useState(0)
+  const [successMessage, setSuccessMessage] = useState('')
   
   
   const { data: rentPrice, isLoading: isPriceLoading, formattedPrice } = useViemRentPrice(domainName, duration)
@@ -79,17 +80,27 @@ export default function RegisterDomain({ onSuccess }: RegisterDomainProps) {
   // Theo dõi trạng thái register transaction - chỉ reset khi transaction thành công
   useEffect(() => {
     if (registerHash && !isRegistering) {
-      // Chờ transaction hoàn thành trước khi reset form
+      // Hiển thị thông báo thành công
+      setSuccessMessage(`Domain ${domainName}.hii đã được đăng ký thành công!`)
+      setStep('success')
+      
+      // Chờ 3 giây rồi gọi onSuccess để refresh danh sách và reset form
       setTimeout(() => {
-        onSuccess()
-        // Reset form
-        setDomainName('')
-        setDuration(1)
-        setSecret('fixed-secret-for-ens-registration')
-        setStep('form')
-      }, 2000) // Chờ 2 giây để đảm bảo transaction được xử lý
+        console.log('Calling onSuccess to refresh domain list...')
+        onSuccess() // Gọi để refresh danh sách domain
+        
+        // Chờ thêm 2 giây nữa để đảm bảo domain list được refresh
+        setTimeout(() => {
+          // Reset form
+          setDomainName('')
+          setDuration(1)
+          setSecret('fixed-secret-for-ens-registration')
+          setStep('form')
+          setSuccessMessage('')
+        }, 2000)
+      }, 3000) // Tăng lên 3 giây để user có thể đọc thông báo
     }
-  }, [registerHash, isRegistering, onSuccess])
+  }, [registerHash, isRegistering, onSuccess, domainName])
 
   const handleCommit = async () => {
     if (!address || !domainName || !secret) return
@@ -141,6 +152,7 @@ export default function RegisterDomain({ onSuccess }: RegisterDomainProps) {
                 { id: 'form', label: 'Thông tin', active: step === 'form' },
                 { id: 'commit', label: 'Commit', active: step === 'commit' || step === 'wait' },
                 { id: 'register', label: 'Đăng ký', active: step === 'register' },
+                { id: 'success', label: 'Hoàn thành', active: step === 'success' },
               ].map((stepItem, index) => (
                 <div key={stepItem.id} className="flex items-center">
                   <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
@@ -155,7 +167,7 @@ export default function RegisterDomain({ onSuccess }: RegisterDomainProps) {
                   }`}>
                     {stepItem.label}
                   </div>
-                  {index < 2 && (
+                  {index < 3 && (
                     <div className="w-8 h-px bg-gray-300 mx-4"></div>
                   )}
                 </div>
@@ -282,6 +294,52 @@ export default function RegisterDomain({ onSuccess }: RegisterDomainProps) {
             >
               {isRegistering ? 'Đang đăng ký...' : 'Xác nhận đăng ký'}
             </button>
+          </div>
+        )}
+
+        {/* Success Step */}
+        {isConnected && step === 'success' && (
+          <div className="text-center py-8">
+            <div className="bg-green-50 rounded-lg p-8 mb-6">
+              <div className="flex justify-center mb-4">
+                <svg className="h-16 w-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-green-900 mb-2">Đăng ký thành công!</h3>
+              <p className="text-lg text-green-700 mb-4">
+                {successMessage}
+              </p>
+              <div className="text-sm text-green-600 mb-4">
+                <p>Transaction hash: <span className="font-mono text-xs">{registerHash}</span></p>
+                <p className="mt-2">Danh sách domain sẽ được cập nhật trong giây lát...</p>
+              </div>
+              
+              <div className="flex justify-center space-x-4">
+                <button
+                  onClick={() => {
+                    console.log('Manual refresh domain list...')
+                    onSuccess()
+                  }}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  Làm mới danh sách
+                </button>
+                <button
+                  onClick={() => {
+                    // Reset form ngay lập tức
+                    setDomainName('')
+                    setDuration(1)
+                    setSecret('fixed-secret-for-ens-registration')
+                    setStep('form')
+                    setSuccessMessage('')
+                  }}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  Đăng ký domain khác
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

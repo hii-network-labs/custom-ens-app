@@ -4,7 +4,7 @@ import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFuncti
 import { getBytes } from 'ethers'
 import { ENS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, ENS_REGISTRY_ABI } from '@/config/contracts'
 import ETHRegistrarControllerABI from '@/contracts/ABIs/ETHRegistrarController.json'
-import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
+import { fetchDomainsByOwner, Domain, testSubgraphConnection, testSubgraphWithOwner } from '@/lib/graphql'
 import PublicResolverABI from '@/contracts/ABIs/PublicResolver.json'
 
 // Function sleep giống như NestJS
@@ -143,9 +143,59 @@ export function useUserDomains() {
     setError(null)
     
     try {
-      const userDomains = await fetchDomainsByOwner(address)
-      setDomains(userDomains)
+      console.log('=== FETCHING USER DOMAINS ===')
+      console.log('Address:', address)
+      console.log('Address lowercase:', address.toLowerCase())
+      
+      let allDomains: Domain[] = []
+      
+      // Test subgraph connection trước
+      await testSubgraphConnection()
+      await testSubgraphWithOwner(address)
+      
+      // Thử fetch từ GraphQL trước
+      try {
+        const userDomains = await fetchDomainsByOwner(address)
+        console.log('GraphQL domains found:', userDomains.length)
+        console.log('GraphQL domains:', userDomains.map(d => d.name))
+        allDomains = [...userDomains]
+        
+        // Nếu có ít domain hơn expected, thử fetch từ blockchain
+        if (userDomains.length < 4) { // Bạn có 4 domains nhưng chỉ thấy 1
+          console.log('GraphQL returned fewer domains than expected, trying blockchain fetch...')
+          try {
+            const blockchainDomains = await fetchDomainsFromBlockchain(address)
+            console.log('Blockchain domains found:', blockchainDomains.length)
+            console.log('Blockchain domains:', blockchainDomains.map(d => d.name))
+            
+            // Merge và deduplicate domains
+            const existingIds = new Set(allDomains.map(d => d.id))
+            const newDomains = blockchainDomains.filter(d => !existingIds.has(d.id))
+            allDomains = [...allDomains, ...newDomains]
+            
+            console.log('Total domains after merge:', allDomains.length)
+          } catch (blockchainError) {
+            console.log('Blockchain fetch failed:', blockchainError)
+          }
+        }
+        
+        setDomains(allDomains)
+        
+      } catch (graphqlError) {
+        console.log('GraphQL fetch failed:', graphqlError)
+        // Fallback: fetch từ blockchain trực tiếp
+        console.log('Falling back to blockchain fetch...')
+        try {
+          const blockchainDomains = await fetchDomainsFromBlockchain(address)
+          console.log('Blockchain fallback domains:', blockchainDomains.length)
+          setDomains(blockchainDomains)
+        } catch (blockchainError) {
+          console.log('Blockchain fallback also failed:', blockchainError)
+          setDomains([])
+        }
+      }
     } catch (err) {
+      console.error('Failed to fetch domains:', err)
       setError(err instanceof Error ? err.message : 'Failed to fetch domains')
     } finally {
       setLoading(false)
@@ -330,7 +380,7 @@ export function useRegisterDomain() {
       console.log('RPC URL:', process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC)
       console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
 
-      setCommitmentHash(commitmentHash)
+      setCommitmentHash(commitmentHash as string)
       
       // Gửi commitment transaction
       writeCommit({
@@ -439,7 +489,7 @@ export function useRegisterDomain() {
           })
           
           // Kiểm tra commitment có tồn tại không
-          if (commitmentTimestamp === 0n) {
+          if (commitmentTimestamp === BigInt(0)) {
             throw new Error('Commitment not found or already used')
           }
           
@@ -756,5 +806,123 @@ export function useTransferDomain() {
     loading: loading || isConfirming,
     error,
     hash
+  }
+}
+
+// Function để fetch domains trực tiếp từ blockchain
+async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[]> {
+  try {
+    console.log('=== FETCHING DOMAINS FROM BLOCKCHAIN ===')
+    console.log('Owner address:', ownerAddress)
+    
+    // Import viem modules
+    const { createPublicClient, http } = await import('viem')
+    
+    // Tạo public client để đọc từ blockchain
+    const publicClient = createPublicClient({
+      chain: {
+        id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
+        name: 'Hii Network',
+        network: 'hii-testnet',
+        nativeCurrency: { name: 'HII', symbol: 'HII', decimals: 18 },
+        rpcUrls: {
+          default: { http: [process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!] },
+          public: { http: [process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!] }
+        }
+      },
+      transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!)
+    })
+
+    const domains: Domain[] = []
+    
+    // Lấy events NameRegistered từ ETHRegistrarController
+    const currentBlock = await publicClient.getBlockNumber()
+    const fromBlock = currentBlock - BigInt(10000) // Lấy 10000 blocks gần nhất
+    
+    console.log('Fetching events from block:', fromBlock.toString(), 'to', currentBlock.toString())
+    
+    const filter = {
+      address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+      topics: [
+        keccak256(encodePacked(['string'], ['NameRegistered(string,bytes32,uint256)']))
+      ],
+      fromBlock,
+      toBlock: currentBlock
+    }
+    
+    const logs = await publicClient.getLogs(filter)
+    console.log('Found', logs.length, 'NameRegistered events')
+    
+    // Xử lý từng event
+    for (const log of logs) {
+      try {
+        // Decode event data
+        const { decodeEventLog } = await import('viem')
+        const decoded = decodeEventLog({
+          abi: ETHRegistrarControllerABI.abi,
+          data: log.data,
+          topics: log.topics
+        })
+        
+        if (decoded.eventName === 'NameRegistered') {
+          const { name, labelHash, expires } = decoded.args as any
+          
+          // Tạo domain node
+          const domainName = `${name}.hii`
+          const node = namehash(domainName)
+          
+          // Kiểm tra owner hiện tại
+          const currentOwner = await publicClient.readContract({
+            address: ENS_CONTRACTS.REGISTRY,
+            abi: ENS_REGISTRY_ABI,
+            functionName: 'owner',
+            args: [node]
+          })
+          
+          // Chỉ lấy domains thuộc về owner này
+          console.log('Checking owner match:', {
+            currentOwner: currentOwner,
+            ownerAddress: ownerAddress,
+            match: currentOwner.toLowerCase() === ownerAddress.toLowerCase()
+          })
+          
+          if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
+            // Sử dụng giá trị mặc định cho resolver và TTL
+            const resolverAddress = '0x0000000000000000000000000000000000000000'
+            const ttl = BigInt(0)
+            
+            const domain: Domain = {
+              id: node,
+              name: domainName,
+              labelName: name,
+              labelhash: labelHash,
+              owner: {
+                id: currentOwner
+              },
+              resolver: resolverAddress !== '0x0000000000000000000000000000000000000000' ? {
+                id: resolverAddress
+              } : undefined,
+              ttl: ttl.toString(),
+              isMigrated: true,
+              createdAt: new Date(Number(expires) * 1000).toISOString(),
+              expiryDate: new Date(Number(expires) * 1000).toISOString()
+            }
+            
+            domains.push(domain)
+            console.log('Added domain:', domainName, 'Owner:', currentOwner)
+          }
+        }
+      } catch (error) {
+        console.log('Error processing event:', error)
+        continue
+      }
+    }
+    
+    console.log('Total domains found from blockchain:', domains.length)
+    return domains
+    
+  } catch (error) {
+    console.error('Error fetching domains from blockchain:', error)
+    return []
   }
 }

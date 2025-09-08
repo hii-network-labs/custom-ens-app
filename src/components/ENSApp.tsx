@@ -8,8 +8,9 @@ import DomainList from './DomainList'
 import RegisterDomain from './RegisterDomain'
 import RenewDomain from './RenewDomain'
 import TransferDomain from './TransferDomain'
+import SubgraphDebug from './SubgraphDebug'
 
-type TabType = 'domains' | 'register' | 'renew' | 'transfer'
+type TabType = 'domains' | 'register' | 'renew' | 'transfer' | 'debug'
 
 export default function ENSApp() {
   const [activeTab, setActiveTab] = useState<TabType>('domains')
@@ -125,6 +126,7 @@ export default function ENSApp() {
                   { id: 'register', label: 'Đăng ký mới' },
                   { id: 'renew', label: 'Gia hạn' },
                   { id: 'transfer', label: 'Chuyển nhượng' },
+                  { id: 'debug', label: 'Debug' },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -159,6 +161,7 @@ export default function ENSApp() {
               {activeTab === 'register' && <RegisterDomain onSuccess={refetch} />}
               {activeTab === 'renew' && <RenewDomain domains={domains} onSuccess={refetch} />}
               {activeTab === 'transfer' && <TransferDomain domains={domains} onSuccess={refetch} />}
+              {activeTab === 'debug' && <SubgraphDebug />}
             </div>
           </div>
         )}
