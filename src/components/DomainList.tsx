@@ -36,7 +36,7 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
         No Domains Yet
       </h3>
       <p className="text-base sm:text-lg text-gray-600 mb-6 sm:mb-8 max-w-md mx-auto px-4">
-        You haven't registered any domains yet. Start building your Web3 identity by registering your first ENS domain!
+        You haven&apos;t registered any domains yet. Start building your Web3 identity by registering your first ENS domain!
       </p>
       <button
         onClick={() => window.location.hash = '#register'}
@@ -108,7 +108,7 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-yellow-800">Possible missing domains</h3>
                 <div className="mt-2 text-sm text-yellow-700">
-                  <p>GraphQL may not have fully indexed new domains. Try clicking "Force Refresh" to fetch from blockchain.</p>
+                  <p>GraphQL may not have fully indexed new domains. Try clicking &quot;Force Refresh&quot; to fetch from blockchain.</p>
                 </div>
               </div>
             </div>
