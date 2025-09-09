@@ -93,7 +93,7 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
           </div>
         ) : domains.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-gray-500">You don't have any domains to renew.</p>
+            <p className="text-gray-500">You don&apos;t have any domains to renew.</p>
           </div>
         ) : (
           <>

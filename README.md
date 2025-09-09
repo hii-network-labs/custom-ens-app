@@ -145,6 +145,138 @@ src/
 - Try refreshing the page
 - Check console for detailed errors
 
+## Deployment to Vercel
+
+### Prerequisites
+
+1. **Vercel Account**: Sign up at [vercel.com](https://vercel.com)
+2. **GitHub Repository**: Push your code to GitHub
+3. **Environment Variables**: Prepare your environment variables
+
+### Step-by-Step Deployment
+
+#### 1. Prepare Environment Variables
+
+Copy `.env.example` to `.env.local` and configure:
+
+```env
+# Required for production
+NEXT_PUBLIC_CHAIN_ID=29342
+NEXT_PUBLIC_RPC_URL=http://103.69.99.57:8545
+NEXT_PUBLIC_GRAPHQL_ENDPOINT=http://103.69.98.81:8000/subgraphs/name/graphprotocol/ens_eth
+
+# Contract addresses (already configured for Hii Network)
+NEXT_PUBLIC_ENS_REGISTRY_ADDRESS=0x8bA3410bd15155F9bb25e46838A21D2eEa0c0945
+NEXT_PUBLIC_BASE_REGISTRAR_ADDRESS=0x222349495048799C19995a65b32d86D20f1BA57A
+# ... other contract addresses
+```
+
+#### 2. Deploy via Vercel Dashboard
+
+1. **Import Project**:
+   - Go to [vercel.com/dashboard](https://vercel.com/dashboard)
+   - Click "New Project"
+   - Import your GitHub repository
+
+2. **Configure Build Settings**:
+   - Framework Preset: **Next.js**
+   - Build Command: `npm run build`
+   - Output Directory: `.next`
+   - Install Command: `npm install`
+
+3. **Add Environment Variables**:
+   - In project settings, go to "Environment Variables"
+   - Add all variables from your `.env.local`
+   - Set for **Production**, **Preview**, and **Development**
+
+4. **Deploy**:
+   - Click "Deploy"
+   - Wait for build to complete
+   - Your app will be available at `https://your-project-name.vercel.app`
+
+#### 3. Deploy via Vercel CLI
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Login to Vercel
+vercel login
+
+# Deploy from project root
+vercel
+
+# Follow prompts:
+# - Set up and deploy? Yes
+# - Which scope? (select your account)
+# - Link to existing project? No
+# - Project name? (enter name or use default)
+# - Directory? ./ 
+# - Override settings? No
+```
+
+#### 4. Configure Custom Domain (Optional)
+
+1. In Vercel dashboard, go to project settings
+2. Navigate to "Domains"
+3. Add your custom domain
+4. Configure DNS records as instructed
+
+### Environment Variables for Production
+
+**Required Variables:**
+```env
+NEXT_PUBLIC_CHAIN_ID=29342
+NEXT_PUBLIC_RPC_URL=http://103.69.99.57:8545
+NEXT_PUBLIC_GRAPHQL_ENDPOINT=http://103.69.98.81:8000/subgraphs/name/graphprotocol/ens_eth
+NEXT_PUBLIC_ENS_REGISTRY_ADDRESS=0x8bA3410bd15155F9bb25e46838A21D2eEa0c0945
+NEXT_PUBLIC_BASE_REGISTRAR_ADDRESS=0x222349495048799C19995a65b32d86D20f1BA57A
+NEXT_PUBLIC_PUBLIC_RESOLVER_ADDRESS=0xa5895DC687Eb0672fCcd964da618dC99112F2D75
+NEXT_PUBLIC_NAME_WRAPPER_ADDRESS=0x1e7339b9e6dC09BE0650a3163f367574679e7497
+```
+
+**Optional Variables:**
+```env
+NEXT_PUBLIC_APP_NAME="HNS - HII Name Service"
+NEXT_PUBLIC_APP_DESCRIPTION="Decentralized naming service for Hii Network"
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+```
+
+### Deployment Checklist
+
+- [ ] Code pushed to GitHub repository
+- [ ] Environment variables configured in Vercel
+- [ ] Build completes successfully
+- [ ] Application loads without errors
+- [ ] Wallet connection works
+- [ ] Contract interactions function properly
+- [ ] GraphQL queries return data
+- [ ] All features tested on production URL
+
+### Troubleshooting Deployment
+
+**Build Errors:**
+- Check TypeScript errors: `npm run lint`
+- Verify all dependencies: `npm install`
+- Test local build: `npm run build`
+
+**Runtime Errors:**
+- Check environment variables are set correctly
+- Verify RPC URL is accessible from Vercel servers
+- Check browser console for client-side errors
+
+**Network Issues:**
+- Ensure RPC endpoint allows external connections
+- Verify GraphQL endpoint is publicly accessible
+- Test contract addresses are correct for target network
+
+### Performance Optimization
+
+- **Image Optimization**: Use Next.js Image component
+- **Code Splitting**: Leverage Next.js automatic code splitting
+- **Caching**: Configure appropriate cache headers in `vercel.json`
+- **Bundle Analysis**: Use `@next/bundle-analyzer` to optimize bundle size
+
 ## Scripts
 
 ```bash
@@ -159,4 +291,10 @@ npm start
 
 # Lint
 npm run lint
+
+# Deploy to Vercel
+vercel
+
+# Deploy to production
+vercel --prod
 ```

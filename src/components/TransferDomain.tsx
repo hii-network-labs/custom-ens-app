@@ -83,7 +83,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
       <div className="max-w-md mx-auto space-y-6">
         {domains.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-gray-500">You don't have any domains to transfer.</p>
+            <p className="text-gray-500">You don&apos;t have any domains to transfer.</p>
           </div>
         ) : (
           <>
