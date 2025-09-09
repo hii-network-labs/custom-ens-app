@@ -1,5 +1,5 @@
-// Địa chỉ các contract ENS trên Hii Network
-export const ENS_CONTRACTS = {
+// Địa chỉ các contract HNS trên Hii Network
+export const HNS_CONTRACTS = {
   MULTICALL: process.env.NEXT_PUBLIC_CONTRACT_MULTICALL as `0x${string}`,
   BASE_REGISTRAR_IMPLEMENTATION: process.env.NEXT_PUBLIC_CONTRACT_BASE_REGISTRAR_IMPLEMENTATION as `0x${string}`,
   BULK_RENEWAL: process.env.NEXT_PUBLIC_CONTRACT_BULK_RENEWAL as `0x${string}`,
@@ -16,8 +16,8 @@ export const ENS_CONTRACTS = {
   LEGACY_PUBLIC_RESOLVER: process.env.NEXT_PUBLIC_CONTRACT_LEGACY_PUBLIC_RESOLVER as `0x${string}`,
 } as const
 
-// ABI cho ENS Registry Contract
-export const ENS_REGISTRY_ABI = [
+// ABI cho HNS Registry Contract
+export const HNS_REGISTRY_ABI = [
   {
     "inputs": [
       {"internalType": "bytes32", "name": "node", "type": "bytes32"},

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPublicClient, createWalletClient, custom, http, formatEther, defineChain, keccak256, encodePacked } from 'viem'
-import { ENS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI } from '@/config/contracts'
+import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI } from '@/config/contracts'
 
 // Define Hii Network chain
 const hiiNetwork = defineChain({
@@ -36,23 +36,23 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
   const [isSuccess, setIsSuccess] = useState(false)
 
   const fetchRentPrice = useCallback(async () => {
-    console.log('fetchRentPrice called with:', { name, duration, nameLength: name?.length })
+
     
     if (!name || !duration || name.length < 3) {
-      console.log('Name or duration validation failed:', { name, duration, length: name?.length })
+
       setData(null)
       setError(null)
       setIsSuccess(false)
       return
     }
 
-    console.log('Starting rent price fetch...')
+
     setIsLoading(true)
     setError(null)
     setIsSuccess(false)
 
     try {
-      console.log('Creating viem client for rentPrice...')
+
       const client = createPublicClient({
         chain: hiiNetwork,
         transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!, {
@@ -62,22 +62,22 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
         })
       })
 
-      console.log('Calling rentPrice with viem...')
+
       const result = await client.readContract({
-        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
+        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
         abi: ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'rentPrice',
         args: [name!, BigInt(duration! * 365 * 24 * 60 * 60)] // duration in seconds
       })
 
-      console.log('Viem rentPrice result:', result)
+
       const priceData = result as { base: bigint, premium: bigint }
       setData(priceData)
       setIsSuccess(true)
       setError(null)
 
     } catch (err: any) {
-      console.error('Viem rentPrice error:', err)
+
       setError(err.message || 'Failed to fetch rent price')
       setData(null)
       setIsSuccess(false)
@@ -87,7 +87,7 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
   }, [name, duration])
 
   useEffect(() => {
-    console.log('useEffect triggered for fetchRentPrice with deps:', { name, duration })
+
     if (name && duration && name.length >= 3) {
       fetchRentPrice()
     }
@@ -123,7 +123,7 @@ export function useViemAvailability(name: string) {
     setIsSuccess(false)
 
     try {
-      console.log('Creating viem client for availability...')
+
       const client = createPublicClient({
         chain: hiiNetwork,
         transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!, {
@@ -133,21 +133,21 @@ export function useViemAvailability(name: string) {
         })
       })
 
-      console.log('Calling available with viem...')
+
       const result = await client.readContract({
-        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
+        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
         abi: ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'available',
         args: [name]
       })
 
-      console.log('Viem availability result:', result)
+
       setData(result as boolean)
       setIsSuccess(true)
       setError(null)
 
     } catch (err: any) {
-      console.error('Viem availability error:', err)
+
       setError(err.message || 'Failed to check availability')
       setData(null)
       setIsSuccess(false)
@@ -195,7 +195,7 @@ export function useViemAccount() {
         setError(null)
       }
     } catch (err: any) {
-      console.error('Error checking wallet connection:', err)
+
       setError(err.message || 'Failed to check wallet connection')
       setAddress(null)
       setIsConnected(false)
@@ -243,7 +243,7 @@ export function useViemAccount() {
         setError(null)
       }
     } catch (err: any) {
-      console.error('Error connecting wallet:', err)
+
       setError(err.message || 'Failed to connect wallet')
     } finally {
       setIsLoading(false)
@@ -288,13 +288,6 @@ export function useViemWriteContract() {
       })
 
       const [account] = await walletClient.getAddresses()
-      console.log('=== VIEM WRITE CONTRACT DEBUG ===');
-      console.log('Account from walletClient:', account);
-      console.log('Function name:', params.functionName);
-      console.log('Contract address:', params.address);
-      console.log('Args:', params.args);
-      console.log('Value:', params.value?.toString());
-      console.log('================================');
       
       if (!account) {
         throw new Error('No account connected')
@@ -312,7 +305,6 @@ export function useViemWriteContract() {
       setData(hash)
       return hash
     } catch (err: any) {
-      console.error('Write contract error:', err)
       setError(err.message || 'Transaction failed')
       throw err
     } finally {
@@ -369,7 +361,6 @@ export function useViemWaitForTransactionReceipt(hash: string | null) {
           setError('Transaction failed')
         }
       } catch (err: any) {
-        console.error('Wait for receipt error:', err)
         setError(err.message || 'Failed to get transaction receipt')
         setIsSuccess(false)
       } finally {
@@ -417,7 +408,6 @@ export function useViemMakeCommitment(
     setIsSuccess(false)
 
     try {
-      console.log('Creating viem client for makeCommitment...')
       const client = createPublicClient({
         chain: hiiNetwork,
         transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!, {
@@ -427,9 +417,8 @@ export function useViemMakeCommitment(
         })
       })
 
-      console.log('Calling makeCommitment with viem...')
       const result = await client.readContract({
-        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
+        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
         abi: ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'makeCommitment',
         args: [
@@ -444,13 +433,11 @@ export function useViemMakeCommitment(
         ]
       })
 
-      console.log('Viem makeCommitment result:', result)
       setCommitmentData(result as string)
       setIsSuccess(true)
       setError(null)
 
     } catch (err: any) {
-      console.error('Viem makeCommitment error:', err)
       setError(err.message || 'Failed to make commitment')
       setCommitmentData(null)
       setIsSuccess(false)

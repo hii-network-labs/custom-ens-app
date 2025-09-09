@@ -25,7 +25,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
   
   const { data: rentPrice, isLoading: isPriceLoading, formattedPrice } = useViemRentPrice(domainName, duration)
   const { data: isAvailable, isLoading: availabilityLoading, error: availabilityError } = useViemAvailability(domainName)
-  const { minCommitmentAge, maxCommitmentAge, isLoading: timingLoading } = useCommitmentTiming()
+  const { minAge: minCommitmentAge, maxAge: maxCommitmentAge, isLoading: timingLoading } = useCommitmentTiming()
   const { 
     makeCommitment, 
     registerDomain, 
@@ -175,7 +175,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
           <div className="space-y-8">
             <div className="text-center">
               <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
-                Register Your ENS Domain
+                Register Your HNS Domain
               </h2>
               <p className="text-gray-600 text-lg">
                 Choose a unique name for your Web3 identity

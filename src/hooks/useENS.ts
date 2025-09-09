@@ -1,10 +1,10 @@
 import { useState, useCallback, useEffect } from 'react'
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useBalance, useEstimateGas, usePublicClient } from 'wagmi'
+import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt, useBalance, usePublicClient } from 'wagmi'
 import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFunctionData, createPublicClient, http } from 'viem'
-import { getBytes } from 'ethers'
-import { ENS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, ENS_REGISTRY_ABI } from '@/config/contracts'
+
+import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, HNS_REGISTRY_ABI } from '@/config/contracts'
 import ETHRegistrarControllerABI from '@/contracts/ABIs/ETHRegistrarController.json'
-import { fetchDomainsByOwner, Domain, testSubgraphConnection, testSubgraphWithOwner } from '@/lib/graphql'
+import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
 import PublicResolverABI from '@/contracts/ABIs/PublicResolver.json'
 import { useToast } from '@/components/Toast'
 
@@ -48,7 +48,7 @@ async function makeData(domain: string, address: string, email?: string): Promis
 
     return dataList
   } catch (error) {
-    console.error('Lỗi khi tạo data cho tên miền:', domain, error)
+
     throw new Error(`Không thể tạo data cho tên miền ${domain}: ${error}`)
   }
 }
@@ -56,78 +56,56 @@ async function makeData(domain: string, address: string, email?: string): Promis
 // Hook để kiểm tra commitment validity
 export function useCommitmentValidity(commitmentHash: string | null) {
   const result = useReadContract({
-    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
     abi: ETHRegistrarControllerABI.abi,
     functionName: 'commitments',
-    args: [commitmentHash as `0x${string}`],
+    args: commitmentHash ? [commitmentHash] : undefined,
     query: {
       enabled: !!commitmentHash
     }
   })
 
-  // Debug commitment validity
-  console.log('=== COMMITMENT VALIDITY HOOK ===')
-  console.log('Commitment hash:', commitmentHash)
-  console.log('Is enabled:', !!commitmentHash)
-  console.log('Result:', result)
-  console.log('Data:', result.data)
-  console.log('Is loading:', result.isLoading)
-  console.log('Error:', result.error)
-  console.log('================================')
-
-  return result
+  return {
+    ...result,
+    isValid: result.data ? Number(result.data) > 0 : false
+  }
 }
 
-// Hook để lấy thông tin timing từ contract
 export function useCommitmentTiming() {
   const minAgeResult = useReadContract({
-    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
     abi: ETHRegistrarControllerABI.abi,
     functionName: 'minCommitmentAge'
   })
 
   const maxAgeResult = useReadContract({
-    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
     abi: ETHRegistrarControllerABI.abi,
     functionName: 'maxCommitmentAge'
   })
 
   return {
-    minCommitmentAge: minAgeResult.data as bigint | undefined,
-    maxCommitmentAge: maxAgeResult.data as bigint | undefined,
-    isLoading: minAgeResult.isLoading || maxAgeResult.isLoading,
-    error: minAgeResult.error || maxAgeResult.error
+    minAge: minAgeResult.data ? Number(minAgeResult.data) : 60,
+    maxAge: maxAgeResult.data ? Number(maxAgeResult.data) : 86400,
+    isLoading: minAgeResult.isLoading || maxAgeResult.isLoading
   }
 }
 
-// Hook để kiểm tra domain availability
 export function useDomainAvailability(name: string) {
   const result = useReadContract({
-    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-    abi: ETH_REGISTRAR_CONTROLLER_ABI,
+    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    abi: ETHRegistrarControllerABI.abi,
     functionName: 'available',
-    args: [name],
-    chainId: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!), // Hii Network chain ID
+    args: name ? [name] : undefined,
     query: {
-      enabled: !!name && name.length >= 3,
-      retry: 3,
-      retryDelay: 1000
+      enabled: !!name && name.length > 0
     }
   })
 
-  // Debug domain availability
-  console.log('=== DOMAIN AVAILABILITY HOOK ===')
-  console.log('Domain name:', name)
-  console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
-  console.log('Is enabled:', !!name && name.length >= 3)
-  console.log('Result:', result)
-  console.log('Data:', result.data)
-  console.log('Is loading:', result.isLoading)
-  console.log('Error:', result.error)
-  console.log('Error details:', result.error?.message)
-  console.log('================================')
-
-  return result
+  return {
+    ...result,
+    isAvailable: result.data
+  }
 }
 
 // Hook để lấy danh sách domains của user
@@ -145,59 +123,22 @@ export function useUserDomains() {
     setError(null)
     
     try {
-      console.log('=== FETCHING USER DOMAINS ===')
-      console.log('Address:', address)
-      console.log('Address lowercase:', address.toLowerCase())
-      
-      let allDomains: Domain[] = []
-      
-      // Test subgraph connection trước
-      await testSubgraphConnection()
-      await testSubgraphWithOwner(address)
-      
-      // Thử fetch từ GraphQL trước
+      // Try GraphQL first, fallback to blockchain if needed
       try {
         const userDomains = await fetchDomainsByOwner(address)
-        console.log('GraphQL domains found:', userDomains.length)
-        console.log('GraphQL domains:', userDomains.map(d => d.name))
-        allDomains = [...userDomains]
-        
-        // Nếu có ít domain hơn expected, thử fetch từ blockchain
-        if (userDomains.length < 4) { // Bạn có 4 domains nhưng chỉ thấy 1
-          console.log('GraphQL returned fewer domains than expected, trying blockchain fetch...')
-          try {
-            const blockchainDomains = await fetchDomainsFromBlockchain(address)
-            console.log('Blockchain domains found:', blockchainDomains.length)
-            console.log('Blockchain domains:', blockchainDomains.map(d => d.name))
-            
-            // Merge và deduplicate domains
-            const existingIds = new Set(allDomains.map(d => d.id))
-            const newDomains = blockchainDomains.filter(d => !existingIds.has(d.id))
-            allDomains = [...allDomains, ...newDomains]
-            
-            console.log('Total domains after merge:', allDomains.length)
-          } catch (blockchainError) {
-            console.log('Blockchain fetch failed:', blockchainError)
-          }
-        }
-        
-        setDomains(allDomains)
-        
+        setDomains(userDomains)
       } catch (graphqlError) {
-        console.log('GraphQL fetch failed:', graphqlError)
-        // Fallback: fetch từ blockchain trực tiếp
-        console.log('Falling back to blockchain fetch...')
+        // Fallback to blockchain fetch
         try {
           const blockchainDomains = await fetchDomainsFromBlockchain(address)
-          console.log('Blockchain fallback domains:', blockchainDomains.length)
           setDomains(blockchainDomains)
         } catch (blockchainError) {
-          console.log('Blockchain fallback also failed:', blockchainError)
           setDomains([])
+          setError('Failed to fetch domains')
         }
       }
     } catch (err) {
-      console.error('Failed to fetch domains:', err)
+      setError('Failed to fetch domains')
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch domains'
        setError(errorMessage)
        addToast({ type: 'error', title: 'Error', message: errorMessage })
@@ -216,18 +157,10 @@ export function useUserDomains() {
 
 // Hook để lấy giá đăng ký domain
 export function useRentPrice(name: string, duration: number) {
-  console.log('=== RENT PRICE HOOK ===')
-  console.log('Name:', name)
-  console.log('Duration:', duration)
-  console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
-  console.log('Duration in seconds:', BigInt(duration * 365 * 24 * 60 * 60))
-  console.log('Name length:', name?.length)
-  console.log('Duration value:', duration)
-  console.log('Enabled:', !!name && name.length >= 3 && duration > 0)
-  console.log('========================')
+
   
   const result = useReadContract({
-    address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
     abi: ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'rentPrice',
     args: [name, BigInt(duration * 365 * 24 * 60 * 60)], // duration in seconds
@@ -239,12 +172,7 @@ export function useRentPrice(name: string, duration: number) {
     }
   })
   
-  console.log('=== RENT PRICE RESULT ===')
-  console.log('Result:', result)
-  console.log('Data:', result.data)
-  console.log('Error:', result.error)
-  console.log('Error message:', result.error?.message)
-  console.log('==========================')
+
   
   return result
 }
@@ -305,12 +233,7 @@ export function useRegisterDomain() {
       setIsRegistering(false)
       const errorMessage = registerError?.message || 'Registration failed. Please try again.'
       
-      console.log('=== TRANSACTION ERROR DETAILED ===')
-      console.log('Error message:', errorMessage)
-      console.log('Full error object:', registerError)
-      console.log('Error name:', registerError?.name)
-      console.log('Error stack:', registerError?.stack)
-      console.log('==================================')
+
       
       // Handle specific error types
       let finalErrorMessage = ''
@@ -368,12 +291,8 @@ export function useRegisterDomain() {
     setIsCommitting(true)
     
     try {
-      console.log('=== FRONTEND COMMITMENT DEBUG ===')
-      console.log('Input params:', { name, owner, duration, secret })
-      
-      // Tạo resolver data giống như NestJS
+      // Create resolver data
       const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
-      console.log('Resolver data created:', resolverData)
 
       // Sử dụng contract function để tạo commitment hash (giống backend)
       if (!publicClient) {
@@ -381,7 +300,7 @@ export function useRegisterDomain() {
       }
 
       const commitmentHash = await publicClient.readContract({
-        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
         abi: ETHRegistrarControllerABI.abi,
         functionName: 'makeCommitment',
         args: [
@@ -389,33 +308,20 @@ export function useRegisterDomain() {
           owner as `0x${string}`,
           BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
           keccak256(encodePacked(['string'], [secret])),
-          ENS_CONTRACTS.PUBLIC_RESOLVER,
+          HNS_CONTRACTS.PUBLIC_RESOLVER,
           resolverData,
           true, // Set reverseRecord to true
           0
         ]
       })
       
-      console.log('=== COMMITMENT HASH COMPARISON ===')
-      console.log('Contract-generated commitment hash:', commitmentHash)
-      console.log('Commit params:', { 
-        name, 
-        owner, 
-        duration: BigInt(60 * 60 * 24 * 30).toString(),
-        secretHash: keccak256(encodePacked(['string'], [secret])),
-        resolver: ENS_CONTRACTS.PUBLIC_RESOLVER,
-        dataLength: resolverData.length,
-        reverseRecord: true,
-        fuses: 0
-      })
-      console.log('RPC URL:', process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC)
-      console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
+
 
       setCommitmentHash(commitmentHash as string)
       
       // Gửi commitment transaction
       writeCommit({
-        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
         abi: ETHRegistrarControllerABI.abi,
         functionName: 'commit',
         args: [commitmentHash],
@@ -423,8 +329,7 @@ export function useRegisterDomain() {
         account: account as `0x${string}`
       })
     } catch (err) {
-      console.error('=== COMMITMENT ERROR ===')
-      console.error('Error:', err)
+
       const errorMessage = err instanceof Error ? err.message : 'Failed to make commitment'
        setError(errorMessage)
        setIsCommitting(false)
@@ -481,24 +386,23 @@ export function useRegisterDomain() {
       // Kiểm tra commitment age trước khi register
       if (publicClient && commitmentHash) {
         try {
-          console.log('=== COMMITMENT AGE CHECK ===')
-          console.log('Checking commitment hash:', commitmentHash)
+
           
           const commitmentTimestamp = await publicClient.readContract({
-            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
             abi: ETH_REGISTRAR_CONTROLLER_ABI,
             functionName: 'commitments',
             args: [commitmentHash as `0x${string}`]
           })
           
           const minCommitmentAge = await publicClient.readContract({
-            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
             abi: ETHRegistrarControllerABI.abi,
             functionName: 'minCommitmentAge'
           }) as bigint
           
           const maxCommitmentAge = await publicClient.readContract({
-            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
             abi: ETHRegistrarControllerABI.abi,
             functionName: 'maxCommitmentAge'
           }) as bigint
@@ -508,18 +412,7 @@ export function useRegisterDomain() {
           const validStart = commitmentTimestamp + minCommitmentAge
           const validEnd = commitmentTimestamp + maxCommitmentAge
           
-          console.log('Commitment timing details:', {
-            commitmentHash,
-            commitmentTimestamp: commitmentTimestamp.toString(),
-            currentTime: currentTime.toString(),
-            commitmentAge: commitmentAge.toString(),
-            minCommitmentAge: minCommitmentAge.toString(),
-            maxCommitmentAge: maxCommitmentAge.toString(),
-            validWindow: `${validStart.toString()} - ${validEnd.toString()}`,
-            isReady: commitmentAge >= minCommitmentAge,
-            isExpired: currentTime > validEnd,
-            isValid: commitmentAge >= minCommitmentAge && currentTime <= validEnd
-          })
+
           
           // Kiểm tra commitment có tồn tại không
           if (commitmentTimestamp === BigInt(0)) {
@@ -535,16 +428,13 @@ export function useRegisterDomain() {
           const requiredAge = minCommitmentAge + BigInt(5)
           if (commitmentAge < requiredAge) {
             const waitTime = Number(requiredAge - commitmentAge)
-            console.log(`Đang đợi thời gian cam kết: ${waitTime} giây`)
-            setError(`Đang đợi commitment đủ tuổi... ${waitTime} giây`)
+            setError(`Waiting for commitment to mature... ${waitTime} seconds`)
             
-            // Đợi tự động như NestJS
+            // Wait automatically
             await sleep(waitTime * 1000)
-            console.log('Commitment đã đủ tuổi, tiếp tục register...')
           }
         } catch (error) {
-          console.error('=== COMMITMENT AGE CHECK ERROR ===')
-          console.error('Error:', error)
+
           throw new Error(`Commitment validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
       } else {
@@ -566,7 +456,7 @@ export function useRegisterDomain() {
         // Thử estimate gas cho register transaction
         if (publicClient) {
           const estimatedGas = await publicClient.estimateContractGas({
-            address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
             abi: ETHRegistrarControllerABI.abi,
             functionName: 'register',
             args: [
@@ -574,7 +464,7 @@ export function useRegisterDomain() {
               owner as `0x${string}`,
               BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
               secretHash,
-              ENS_CONTRACTS.PUBLIC_RESOLVER,
+              HNS_CONTRACTS.PUBLIC_RESOLVER,
               resolverData,
               true, // Set reverseRecord to true
               0
@@ -583,92 +473,35 @@ export function useRegisterDomain() {
             account: account as `0x${string}`
           })
           finalGasLimit = (estimatedGas * BigInt(120)) / BigInt(100) // Thêm 20% như NestJS
-          console.log('Gas estimation successful:', estimatedGas.toString())
+
         } else {
-          console.log('Public client not available, using default gas limit')
+
         }
       } catch (gasError) {
-        console.log('Gas estimation failed, using default:', gasError)
+
         // Sử dụng default gas limit nếu estimation thất bại
       }
 
-      // Debug chi tiết với gas calculation mới
-      console.log('=== DEBUG BALANCE CHECK ===')
-      console.log('Skip Balance Check:', skipBalanceCheck)
-      if (balance) {
-        console.log('Balance:', {
-          value: balance.value.toString(),
-          formatted: (Number(balance.value) / 10 ** 18).toFixed(6) + ' HII'
-        })
-        console.log('Price:', {
-          value: price.toString(),
-          formatted: (Number(price) / 10 ** 18).toFixed(6) + ' HII'
-        })
-        console.log('Gas Calculation:', {
-          finalGasLimit: finalGasLimit.toString(),
-          gasBuffer: gasBuffer.toString(),
-          formatted: (Number(gasBuffer) / 10 ** 18).toFixed(6) + ' HII'
-        })
-        console.log('Cost Calculation:', {
-          rentPrice: (Number(price) / 10 ** 18).toFixed(6) + ' HII',
-          gasBuffer: (Number(gasBuffer) / 10 ** 18).toFixed(6) + ' HII',
-          totalCost: (Number(totalCost) / 10 ** 18).toFixed(6) + ' HII'
-        })
-        console.log('Balance Check:', {
-          hasEnough: balance.value >= totalCost,
-          difference: (Number(balance.value - totalCost) / 10 ** 18).toFixed(6) + ' HII'
-        })
-      } else {
-        console.log('No balance data available')
-      }
-      console.log('==========================')
-
-      console.log('Register params:', {
-        name,
-        owner,
-        duration,
-        secret,
-        secretHash,
-        price: price.toString(),
-        balance: balance?.value.toString() || 'N/A',
-        gasBuffer: gasBuffer.toString(),
-        totalCost: totalCost.toString(),
-        skipBalanceCheck,
-        commitmentHash,
-        contractAddress: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-        resolverAddress: ENS_CONTRACTS.PUBLIC_RESOLVER,
-        rpcUrl: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC,
-      })
-
-      // Kiểm tra số dư trước khi thực hiện giao dịch (chỉ khi không bỏ qua)
+      // Check balance before transaction (unless skipped)
       if (!skipBalanceCheck && balance && balance.value < totalCost) {
         const shortfall = totalCost - balance.value
         const shortfallFormatted = (Number(shortfall) / 10 ** 18).toFixed(6)
         const balanceFormatted = (Number(balance.value) / 10 ** 18).toFixed(6)
         const totalCostFormatted = (Number(totalCost) / 10 ** 18).toFixed(6)
         
-        console.log('=== BALANCE CHECK FAILED ===')
-        console.log('Balance value:', balance.value.toString())
-        console.log('Total cost:', totalCost.toString())
-        console.log('Comparison:', balance.value < totalCost)
-        console.log('Balance < TotalCost:', balance.value < totalCost)
-        console.log('Balance === TotalCost:', balance.value === totalCost)
-        console.log('Balance > TotalCost:', balance.value > totalCost)
-        console.log('============================')
+
         
-        // Thử với skip balance check nếu balance gần đủ
+        // Try with skip balance check if balance is sufficient for rent price
         if (balance.value >= price) {
-          console.log('=== TRYING WITH SKIP BALANCE CHECK ===')
-          console.log('Balance is sufficient for rent price, trying with skip balance check')
           return registerDomain(name, owner, duration, secret, price, true)
         }
         
-        setError(`Số dư không đủ. Số dư hiện tại: ${balanceFormatted} HII. Cần: ${totalCostFormatted} HII. Thiếu: ${shortfallFormatted} HII`)
+        setError(`Insufficient balance. Current: ${balanceFormatted} HII. Required: ${totalCostFormatted} HII. Short: ${shortfallFormatted} HII`)
         setIsRegistering(false)
         return
       }
 
-      // Debug khi balance check pass
+  
       // if (!skipBalanceCheck && balance) {
       //   console.log('=== BALANCE CHECK PASSED ===')
       //   console.log('Balance value:', balance.value.toString())
@@ -704,23 +537,10 @@ export function useRegisterDomain() {
         // Tạo resolver data giống như NestJS
         const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
 
-        console.log('=== REGISTER TRANSACTION DEBUG ===')
-        console.log('Register params:', {
-          name,
-          owner,
-          duration: BigInt(60 * 60 * 24 * 30).toString(),
-          secretHash,
-          resolver: ENS_CONTRACTS.PUBLIC_RESOLVER,
-          dataLength: resolverData.length,
-          reverseRecord: true,
-          fuses: 0,
-          value: price.toString(),
-          gas: finalGasLimit.toString(),
-          commitmentHash
-        })
+
 
         writeRegister({
-          address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+          address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
           abi: ETHRegistrarControllerABI.abi,
           functionName: 'register',
           args: [
@@ -728,7 +548,7 @@ export function useRegisterDomain() {
             owner as `0x${string}`,
             BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
             secretHash,
-            ENS_CONTRACTS.PUBLIC_RESOLVER,
+            HNS_CONTRACTS.PUBLIC_RESOLVER,
             resolverData as readonly `0x${string}`[],
             true, // Set reverseRecord to true
             0
@@ -737,13 +557,8 @@ export function useRegisterDomain() {
           gas: finalGasLimit, // Sử dụng final gas limit
           account: account as `0x${string}` // Đảm bảo sử dụng đúng account
         })
-        console.log('=== WRITE REGISTER CALLED SUCCESSFULLY ===')
       } catch (writeError) {
-        console.log('=== WRITE REGISTER ERROR ===')
-        console.log('Error:', writeError)
-        console.log('Error message:', writeError instanceof Error ? writeError.message : 'Unknown error')
-        console.log('==========================')
-        setError(`Lỗi khi gửi giao dịch: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`)
+        setError(`Transaction error: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`)
         setIsRegistering(false)
       }
     } catch (err) {
@@ -752,7 +567,7 @@ export function useRegisterDomain() {
        setIsRegistering(false)
        addToast({ type: 'error', title: 'Registration Error', message: errorMessage })
     }
-  }, [writeRegister, commitmentHash, balance, isConnected, account]);
+  }, [writeRegister, commitmentHash, balance, isConnected, account, publicClient, addToast]);
 
   return {
     makeCommitment,
@@ -792,7 +607,7 @@ export function useRenewDomain() {
     
     try {
       writeContract({
-        address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
         abi: ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'renew',
         args: [name, BigInt(duration * 365 * 24 * 60 * 60)],
@@ -857,18 +672,17 @@ export function useTransferDomain() {
       
       // Kiểm tra owner từ ENS Registry
       const registryOwner = await publicClient.readContract({
-        address: ENS_CONTRACTS.REGISTRY,
-        abi: ENS_REGISTRY_ABI,
+        address: HNS_CONTRACTS.REGISTRY,
+        abi: HNS_REGISTRY_ABI,
         functionName: 'owner',
         args: [node]
       })
       
-      console.log('Registry owner:', registryOwner)
-      console.log('NameWrapper address:', ENS_CONTRACTS.NAME_WRAPPER)
+
       
       // Nếu owner là NameWrapper, kiểm tra BaseRegistrar ownership
-      if (registryOwner.toLowerCase() === ENS_CONTRACTS.NAME_WRAPPER.toLowerCase()) {
-        console.log('Domain is wrapped in NameWrapper, checking BaseRegistrar ownership')
+      if (registryOwner.toLowerCase() === HNS_CONTRACTS.NAME_WRAPPER.toLowerCase()) {
+
         
         // Tính tokenId từ label hash
         const labelHash = keccak256(encodePacked(['string'], [domainName.split('.')[0]]))
@@ -876,7 +690,7 @@ export function useTransferDomain() {
         
         // Kiểm tra owner của token trong BaseRegistrar
         const baseRegistrarOwner = await publicClient.readContract({
-          address: ENS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
+          address: HNS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
           abi: [
             {
               "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
@@ -890,15 +704,14 @@ export function useTransferDomain() {
           args: [tokenId]
         })
         
-        console.log('BaseRegistrar token owner:', baseRegistrarOwner)
-        console.log('Current user:', address)
+
         
         // Nếu BaseRegistrar owner là user, sử dụng BaseRegistrar transfer
         if (baseRegistrarOwner.toLowerCase() === address?.toLowerCase()) {
-          console.log('Using BaseRegistrar transferFrom')
+
           
           writeContract({
-            address: ENS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
+            address: HNS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
             abi: [
               {
                 "inputs": [
@@ -916,29 +729,28 @@ export function useTransferDomain() {
             args: [address as `0x${string}`, newOwner as `0x${string}`, tokenId]
           })
         } else {
-          console.log('Using NameWrapper setRecord')
+
           
           // Lấy resolver hiện tại
           const currentResolver = await publicClient.readContract({
-            address: ENS_CONTRACTS.REGISTRY,
-            abi: ENS_REGISTRY_ABI,
+            address: HNS_CONTRACTS.REGISTRY,
+            abi: HNS_REGISTRY_ABI,
             functionName: 'resolver',
             args: [node]
           })
           
           // Lấy TTL hiện tại
           const currentTTL = await publicClient.readContract({
-            address: ENS_CONTRACTS.REGISTRY,
-            abi: ENS_REGISTRY_ABI,
+            address: HNS_CONTRACTS.REGISTRY,
+            abi: HNS_REGISTRY_ABI,
             functionName: 'ttl',
             args: [node]
           })
           
-          console.log('Current resolver:', currentResolver)
-          console.log('Current TTL:', currentTTL)
+          
           
           writeContract({
-            address: ENS_CONTRACTS.NAME_WRAPPER,
+            address: HNS_CONTRACTS.NAME_WRAPPER,
             abi: [
               {
                 "inputs": [
@@ -958,11 +770,11 @@ export function useTransferDomain() {
           })
         }
       } else {
-        console.log('Domain is directly owned, using Registry transfer')
+
         
         writeContract({
-          address: ENS_CONTRACTS.REGISTRY,
-          abi: ENS_REGISTRY_ABI,
+          address: HNS_CONTRACTS.REGISTRY,
+          abi: HNS_REGISTRY_ABI,
           functionName: 'setOwner',
           args: [node, newOwner as `0x${string}`]
         })
@@ -992,8 +804,7 @@ export function useTransferDomain() {
 // Function để fetch domains trực tiếp từ blockchain
 async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[]> {
   try {
-    console.log('=== FETCHING DOMAINS FROM BLOCKCHAIN ===')
-    console.log('Owner address:', ownerAddress)
+
     
     // Import viem modules
     const { createPublicClient, http } = await import('viem')
@@ -1019,10 +830,10 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
     const currentBlock = await publicClient.getBlockNumber()
     const fromBlock = currentBlock - BigInt(10000) // Lấy 10000 blocks gần nhất
     
-    console.log('Fetching events from block:', fromBlock.toString(), 'to', currentBlock.toString())
+
     
     const filter = {
-      address: ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
+      address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
       topics: [
         keccak256(encodePacked(['string'], ['NameRegistered(string,bytes32,uint256)']))
       ],
@@ -1031,7 +842,7 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
     }
     
     const logs = await publicClient.getLogs(filter)
-    console.log('Found', logs.length, 'NameRegistered events')
+
     
     // Xử lý từng event
     for (const log of logs) {
@@ -1053,18 +864,14 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
           
           // Kiểm tra owner hiện tại
           const currentOwner = await publicClient.readContract({
-            address: ENS_CONTRACTS.REGISTRY,
-            abi: ENS_REGISTRY_ABI,
+            address: HNS_CONTRACTS.REGISTRY,
+        abi: HNS_REGISTRY_ABI,
             functionName: 'owner',
             args: [node]
           })
           
           // Chỉ lấy domains thuộc về owner này
-          console.log('Checking owner match:', {
-            currentOwner: currentOwner,
-            ownerAddress: ownerAddress,
-            match: currentOwner.toLowerCase() === ownerAddress.toLowerCase()
-          })
+
           
           if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
             // Sử dụng giá trị mặc định cho resolver và TTL
@@ -1089,20 +896,20 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
             }
             
             domains.push(domain)
-            console.log('Added domain:', domainName, 'Owner:', currentOwner)
+
           }
         }
       } catch (error) {
-        console.log('Error processing event:', error)
+
         continue
       }
     }
     
-    console.log('Total domains found from blockchain:', domains.length)
+
     return domains
     
   } catch (error) {
-    console.error('Error fetching domains from blockchain:', error)
+
     return []
   }
 }

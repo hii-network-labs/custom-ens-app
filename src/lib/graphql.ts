@@ -1,6 +1,6 @@
 import { GraphQLClient } from 'graphql-request'
 import { createPublicClient, http, namehash } from 'viem'
-import { ENS_CONTRACTS } from '@/config/contracts'
+import { HNS_CONTRACTS } from '@/config/contracts'
 
 // GraphQL client cho The Graph API
 export const graphqlClient = new GraphQLClient(
@@ -245,43 +245,7 @@ export async function fetchDomainDetails(id: string): Promise<Domain | null> {
   }
 }
 
-// Hàm để test subgraph trực tiếp
-export async function testSubgraphConnection(): Promise<void> {
-  try {
-    console.log('=== TESTING SUBGRAPH CONNECTION ===')
-    console.log('Subgraph URL:', process.env.NEXT_PUBLIC_CUSTOM_NETWORK_SUBGRAPH_URL || 'http://103.69.99.58:8000/subgraphs/name/graphprotocol/ens_hii')
-    
-    const testQuery = `
-      query TestQuery {
-        domains(first: 10) {
-          id
-          name
-          labelName
-          owner {
-            id
-          }
-        }
-      }
-    `
-    
-    const response = await graphqlClient.request<DomainsResponse>(testQuery)
-    console.log('Subgraph test response:', response)
-    console.log('Total domains in subgraph:', response.domains.length)
-    
-    // Log chi tiết từng domain
-    response.domains.forEach((domain: Domain, index: number) => {
-      console.log(`Domain ${index + 1}:`, {
-        name: domain.name,
-        labelName: domain.labelName,
-        owner: domain.owner?.id,
-        id: domain.id
-      })
-    })
-    
-  } catch (error) {
-    console.error('Subgraph connection test failed:', error)
-  }
-}
+
 
 // Hàm để check NameWrapper ownership và lấy owner thực tế
 async function checkNameWrapperOwnership(domainName: string, userAddress: string): Promise<{ isOwner: boolean; realOwner?: string }> {
@@ -302,7 +266,7 @@ async function checkNameWrapperOwnership(domainName: string, userAddress: string
     })
 
     // NameWrapper contract address
-    const NAME_WRAPPER_ADDRESS = ENS_CONTRACTS.NAME_WRAPPER
+    const NAME_WRAPPER_ADDRESS = HNS_CONTRACTS.NAME_WRAPPER
     
     if (!NAME_WRAPPER_ADDRESS || NAME_WRAPPER_ADDRESS === '0x0000000000000000000000000000000000000000') {
       console.log('NameWrapper address not configured')
@@ -343,46 +307,5 @@ async function checkNameWrapperOwnership(domainName: string, userAddress: string
   } catch (error) {
     console.log('Error checking NameWrapper ownership:', error)
     return { isOwner: false }
-  }
-}
-
-// Hàm để test với owner cụ thể
-export async function testSubgraphWithOwner(owner: string): Promise<void> {
-  try {
-    console.log('=== TESTING SUBGRAPH WITH OWNER ===')
-    console.log('Owner:', owner)
-    
-    const testQuery = `
-      query TestQueryWithOwner {
-        domains(first: 100) {
-          id
-          name
-          labelName
-          owner {
-            id
-          }
-        }
-      }
-    `
-    
-    const response = await graphqlClient.request<DomainsResponse>(testQuery)
-    console.log('All domains:', response.domains.length)
-    
-    // Filter domains theo owner
-    const ownerDomains = response.domains.filter((domain: Domain) => 
-      domain.owner?.id?.toLowerCase() === owner.toLowerCase()
-    )
-    
-    console.log('Domains owned by user:', ownerDomains.length)
-    ownerDomains.forEach((domain: Domain, index: number) => {
-      console.log(`User Domain ${index + 1}:`, {
-        name: domain.name,
-        labelName: domain.labelName,
-        owner: domain.owner?.id
-      })
-    })
-    
-  } catch (error) {
-    console.error('Subgraph owner test failed:', error)
   }
 }

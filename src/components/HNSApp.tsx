@@ -14,7 +14,7 @@ import LoadingState, { InlineLoader } from './LoadingState'
 
 type TabType = 'domains' | 'register' | 'renew' | 'transfer'
 
-export default function ENSApp() {
+export default function HNSApp() {
   const [activeTab, setActiveTab] = useState<TabType>('domains')
   const [isClient, setIsClient] = useState(false)
   const { address, isConnected } = useAccount()
@@ -84,7 +84,7 @@ export default function ENSApp() {
               </div>
               <div>
                 <h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  ENS Manager
+                  HNS Manager
                 </h1>
                 <p className="text-xs sm:text-sm text-gray-500">Hii Network</p>
               </div>
@@ -148,7 +148,7 @@ export default function ENSApp() {
                   Your Web3 Identity
                 </h2>
                 <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-                  Connect your wallet to start managing ENS domains on Hii Network. 
+                  Connect your wallet to start managing HNS domains on Hii Network. 
                   <br className="hidden sm:block" />
                   One name for all your crypto addresses.
                 </p>
