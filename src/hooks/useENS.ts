@@ -6,6 +6,7 @@ import { ENS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, ENS_REGISTRY_ABI } from '@
 import ETHRegistrarControllerABI from '@/contracts/ABIs/ETHRegistrarController.json'
 import { fetchDomainsByOwner, Domain, testSubgraphConnection, testSubgraphWithOwner } from '@/lib/graphql'
 import PublicResolverABI from '@/contracts/ABIs/PublicResolver.json'
+import { useToast } from '@/components/Toast'
 
 // Function sleep giống như NestJS
 function sleep(ms: number): Promise<void> {
@@ -132,6 +133,7 @@ export function useDomainAvailability(name: string) {
 // Hook để lấy danh sách domains của user
 export function useUserDomains() {
   const { address } = useAccount()
+  const { addToast } = useToast()
   const [domains, setDomains] = useState<Domain[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -196,7 +198,9 @@ export function useUserDomains() {
       }
     } catch (err) {
       console.error('Failed to fetch domains:', err)
-      setError(err instanceof Error ? err.message : 'Failed to fetch domains')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch domains'
+       setError(errorMessage)
+       addToast({ type: 'error', title: 'Error', message: errorMessage })
     } finally {
       setLoading(false)
     }
@@ -250,13 +254,15 @@ export function useRegisterDomain() {
   const { address: account, isConnected, status } = useAccount()
   const { data: balance } = useBalance({ address: account })
   const publicClient = usePublicClient()
-
+  const { addToast } = useToast()
 
   const [isCommitting, setIsCommitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const [commitmentHash, setCommitmentHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [estimatedGas, setEstimatedGas] = useState<bigint | null>(null)
+  const [hasShownCommitSuccess, setHasShownCommitSuccess] = useState(false)
+  const [hasShownRegisterSuccess, setHasShownRegisterSuccess] = useState(false)
   
   const { writeContract: writeCommit, data: commitHash } = useWriteContract()
   const { writeContract: writeRegister, data: registerHash } = useWriteContract()
@@ -271,15 +277,29 @@ export function useRegisterDomain() {
 
   // Reset states khi commit thành công
   useEffect(() => {
-    if (isCommitSuccess) {
+    if (isCommitSuccess && !hasShownCommitSuccess) {
       setIsCommitting(false)
+      setHasShownCommitSuccess(true)
+      addToast({ 
+        type: 'success', 
+        title: 'Success', 
+        message: 'Commitment submitted successfully! Please wait 60 seconds before registering.',
+        duration: 5000
+      })
     }
-  }, [isCommitSuccess])
+  }, [isCommitSuccess, hasShownCommitSuccess, addToast])
 
   // Reset states khi register thành công hoặc thất bại
   useEffect(() => {
-    if (isRegisterSuccess) {
+    if (isRegisterSuccess && !hasShownRegisterSuccess) {
       setIsRegistering(false)
+      setHasShownRegisterSuccess(true)
+      addToast({ 
+        type: 'success', 
+        title: 'Success', 
+        message: 'Domain registered successfully!',
+        duration: 5000
+      })
     }
     if (isRegisterError) {
       setIsRegistering(false)
@@ -292,22 +312,30 @@ export function useRegisterDomain() {
       console.log('Error stack:', registerError?.stack)
       console.log('==================================')
       
-      // Xử lý lỗi insufficient funds cụ thể
+      // Handle specific error types
+      let finalErrorMessage = ''
       if (errorMessage.includes('insufficient funds') || errorMessage.includes('insufficient balance')) {
-        setError('Giao dịch thất bại: Số dư không đủ. Vui lòng kiểm tra lại số dư và thử lại.')
+        finalErrorMessage = 'Transaction failed: Insufficient balance. Please check your balance and try again.'
       } else if (errorMessage.includes('gas')) {
-        setError(`Giao dịch thất bại: Lỗi gas. ${errorMessage}`)
+        finalErrorMessage = `Transaction failed: Gas error. ${errorMessage}`
       } else if (errorMessage.includes('nonce')) {
-        setError(`Giao dịch thất bại: Lỗi nonce. ${errorMessage}`)
+        finalErrorMessage = `Transaction failed: Nonce error. ${errorMessage}`
       } else if (errorMessage.includes('revert')) {
-        setError(`Giao dịch thất bại: Contract revert. ${errorMessage}`)
+        finalErrorMessage = `Transaction failed: Contract revert. ${errorMessage}`
       } else if (errorMessage.includes('user rejected')) {
-        setError('Giao dịch bị hủy bởi người dùng.')
+        finalErrorMessage = 'Transaction cancelled by user.'
       } else {
-        setError(`Giao dịch thất bại: ${errorMessage}`)
+        finalErrorMessage = `Transaction failed: ${errorMessage}`
       }
+      setError(finalErrorMessage)
+      addToast({ 
+        type: 'error', 
+        title: 'Registration Error', 
+        message: finalErrorMessage,
+        duration: 8000
+      })
     }
-  }, [isRegisterSuccess, isRegisterError, registerError])
+  }, [isRegisterSuccess, isRegisterError, registerError, hasShownRegisterSuccess, addToast])
 
 
 
@@ -333,6 +361,9 @@ export function useRegisterDomain() {
       return
     }
     
+    // Reset notification flags for new registration
+    setHasShownCommitSuccess(false)
+    setHasShownRegisterSuccess(false)
     setError(null)
     setIsCommitting(true)
     
@@ -394,8 +425,10 @@ export function useRegisterDomain() {
     } catch (err) {
       console.error('=== COMMITMENT ERROR ===')
       console.error('Error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to make commitment')
-      setIsCommitting(false)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to make commitment'
+       setError(errorMessage)
+       setIsCommitting(false)
+       addToast({ type: 'error', title: 'Commitment Error', message: errorMessage })
     }
   }, [writeCommit, isConnected, account, publicClient])
 
@@ -714,8 +747,10 @@ export function useRegisterDomain() {
         setIsRegistering(false)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register domain')
-      setIsRegistering(false)
+      const errorMessage = err instanceof Error ? err.message : 'Failed to register domain'
+       setError(errorMessage)
+       setIsRegistering(false)
+       addToast({ type: 'error', title: 'Registration Error', message: errorMessage })
     }
   }, [writeRegister, commitmentHash, balance, isConnected, account]);
 
@@ -738,7 +773,14 @@ export function useRenewDomain() {
   const [error, setError] = useState<string | null>(null)
   
   const { writeContract, data: hash } = useWriteContract()
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  // Reset loading state when transaction is confirmed
+  useEffect(() => {
+    if (isSuccess) {
+      setLoading(false)
+    }
+  }, [isSuccess])
 
   const renewDomain = useCallback(async (
     name: string,
@@ -766,7 +808,8 @@ export function useRenewDomain() {
     renewDomain,
     loading: loading || isConfirming,
     error,
-    hash
+    hash,
+    isSuccess
   }
 }
 
@@ -776,8 +819,15 @@ export function useTransferDomain() {
   const [error, setError] = useState<string | null>(null)
   
   const { address } = useAccount()
-  const { writeContract, data: hash } = useWriteContract()
-  const { isLoading: isConfirming } = useWaitForTransactionReceipt({ hash })
+  const { writeContract, data: hash, reset: resetTransaction } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  // Reset loading state when transaction is confirmed
+  useEffect(() => {
+    if (isSuccess) {
+      setLoading(false)
+    }
+  }, [isSuccess])
 
   const transferDomain = useCallback(async (
     domainName: string,
@@ -923,11 +973,19 @@ export function useTransferDomain() {
     }
   }, [writeContract])
 
+  const resetTransferState = useCallback(() => {
+    resetTransaction()
+    setLoading(false)
+    setError(null)
+  }, [resetTransaction])
+
   return {
     transferDomain,
     loading: loading || isConfirming,
     error,
-    hash
+    hash,
+    isSuccess,
+    resetTransferState
   }
 }
 

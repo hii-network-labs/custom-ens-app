@@ -33,9 +33,9 @@ File `.env.local` đã được tạo sẵn với cấu hình cho Hii Network:
 
 ```env
 # Hii Network Configuration
-NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID=22988
+NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID=29342
 NEXT_PUBLIC_CUSTOM_NETWORK_NAME="Hii Network"
-NEXT_PUBLIC_CUSTOM_NETWORK_RPC="http://103.69.98.80:8545"
+NEXT_PUBLIC_CUSTOM_NETWORK_RPC="http://103.69.99.57:8545"
 # ... các cấu hình khác
 ```
 
@@ -107,8 +107,8 @@ src/
 
 ## Thông tin Hii Network
 
-- **Chain ID**: 22988
-- **RPC URL**: http://103.69.98.80:8545
+- **Chain ID**: 29342
+- **RPC URL**: http://103.69.99.57:8545
 - **Explorer**: https://explorer.testnet.hii.network
 - **Native Token**: HII
 - **The Graph**: http://103.69.98.81:8000/subgraphs/name/graphprotocol/ens_eth

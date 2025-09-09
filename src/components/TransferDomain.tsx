@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { isAddress } from 'viem'
 import { useTransferDomain } from '@/hooks/useENS'
 import { Domain } from '@/lib/graphql'
@@ -15,7 +15,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
   const [newOwner, setNewOwner] = useState('')
   const [confirmTransfer, setConfirmTransfer] = useState(false)
   
-  const { transferDomain, loading, error } = useTransferDomain()
+  const { transferDomain, loading, error, isSuccess, resetTransferState } = useTransferDomain()
 
   const handleTransfer = async () => {
     if (!selectedDomain || !newOwner || !confirmTransfer) return
@@ -25,13 +25,49 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
     try {
       await transferDomain(domainName, newOwner)
       onSuccess()
-      // Reset form
-      setSelectedDomain('')
-      setNewOwner('')
-      setConfirmTransfer(false)
     } catch (err) {
       console.error('Transfer failed:', err)
     }
+  }
+
+  // Reset form when transaction is successful
+  useEffect(() => {
+    if (isSuccess) {
+      setSelectedDomain('')
+      setNewOwner('')
+      setConfirmTransfer(false)
+    }
+  }, [isSuccess])
+
+  // Show success message
+  if (isSuccess) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
+            <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Transfer Successful!</h3>
+          <p className="text-sm text-gray-500 mb-4">
+            The domain has been successfully transferred to the new owner.
+          </p>
+          <button
+            onClick={() => {
+              // Reset the transaction state and form
+              resetTransferState()
+              setSelectedDomain('')
+              setNewOwner('')
+              setConfirmTransfer(false)
+            }}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Transfer Another Domain
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const selectedDomainData = domains.find(d => d.name === selectedDomain)
@@ -41,19 +77,19 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
   return (
     <div className="p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-6">
-        Chuyển nhượng Domain
+        Transfer Domain
       </h2>
 
       <div className="max-w-md mx-auto space-y-6">
         {domains.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-gray-500">Bạn chưa có domain nào để chuyển nhượng.</p>
+            <p className="text-gray-500">You don't have any domains to transfer.</p>
           </div>
         ) : (
           <>
             <div>
               <label htmlFor="domain-select" className="block text-sm font-medium text-gray-700 mb-2">
-                Chọn Domain
+                Select Domain
               </label>
               <select
                 id="domain-select"
@@ -61,7 +97,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
                 onChange={(e) => setSelectedDomain(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               >
-                <option value="">-- Chọn domain --</option>
+                <option value="">-- Select domain --</option>
                 {domains.map((domain) => (
                   <option key={domain.id} value={domain.name}>
                     {domain.name}
@@ -72,21 +108,21 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
 
             {selectedDomainData && (
               <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-medium text-gray-900 mb-2">Thông tin Domain</h3>
+                <h3 className="font-medium text-gray-900 mb-2">Domain Information</h3>
                 <div className="space-y-1 text-sm text-gray-600">
                   <div>
-                    <span className="font-medium">Tên:</span>
+                    <span className="font-medium">Name:</span>
                     <span className="ml-2">{selectedDomainData.name}</span>
                   </div>
                   <div>
-                    <span className="font-medium">Owner hiện tại:</span>
+                    <span className="font-medium">Current Owner:</span>
                     <span className="ml-2 font-mono text-xs">
                       {selectedDomainData.owner.id}
                     </span>
                   </div>
                   {selectedDomainData.expiryDate && (
                     <div>
-                      <span className="font-medium">Hết hạn:</span>
+                      <span className="font-medium">Expires:</span>
                       <span className="ml-2">
                         {new Date(parseInt(selectedDomainData.expiryDate) * 1000).toLocaleDateString('vi-VN')}
                       </span>
@@ -98,7 +134,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
 
             <div>
               <label htmlFor="new-owner" className="block text-sm font-medium text-gray-700 mb-2">
-                Địa chỉ ví mới
+                New Wallet Address
               </label>
               <input
                 type="text"
@@ -114,12 +150,12 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
               />
               {newOwner && !isValidAddress && (
                 <p className="mt-1 text-sm text-red-600">
-                  Địa chỉ ví không hợp lệ
+                  Invalid wallet address
                 </p>
               )}
               {newOwner && isValidAddress && (
                 <p className="mt-1 text-sm text-green-600">
-                  Địa chỉ ví hợp lệ
+                  Valid wallet address
                 </p>
               )}
             </div>
@@ -133,15 +169,17 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
                     </svg>
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-yellow-800">Cảnh báo</h3>
-                    <div className="mt-2 text-sm text-yellow-700">
-                      <p>
-                        Bạn sắp chuyển domain <strong>{selectedDomain}</strong> cho địa chỉ:
-                      </p>
-                      <p className="font-mono text-xs mt-1 break-all">{newOwner}</p>
-                      <p className="mt-2">
-                        <strong>Hành động này không thể hoàn tác!</strong> Hãy chắc chắn địa chỉ ví đích là chính xác.
-                      </p>
+                    <h3 className="text-sm font-medium text-yellow-800">Warning</h3>
+                <div className="mt-2 text-sm text-yellow-700">
+                  <p>
+                    You are about to transfer domain <strong>{selectedDomain}</strong> to address:
+                  </p>
+                  <p className="font-mono text-xs mt-1 break-all">
+                    {newOwner}
+                  </p>
+                  <p className="mt-2">
+                    <strong>This action cannot be undone!</strong> Make sure the destination wallet address is correct.
+                  </p>
                     </div>
                   </div>
                 </div>
@@ -157,7 +195,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
                 className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
               />
               <label htmlFor="confirm-transfer" className="ml-2 block text-sm text-gray-900">
-                Tôi hiểu rằng hành động này không thể hoàn tác và xác nhận chuyển nhượng domain
+                I understand that this action cannot be undone and confirm the domain transfer
               </label>
             </div>
 
@@ -166,7 +204,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
               disabled={!isFormValid || loading}
               className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-md font-medium transition-colors"
             >
-              {loading ? 'Đang chuyển nhượng...' : 'Chuyển nhượng Domain'}
+              {loading ? 'Transferring...' : 'Transfer Domain'}
             </button>
           </>
         )}
@@ -180,7 +218,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-sm font-medium text-red-800">Lỗi chuyển nhượng</h3>
+                <h3 className="text-sm font-medium text-red-800">Transfer Error</h3>
                 <div className="mt-2 text-sm text-red-700">
                   <p>{error}</p>
                 </div>
