@@ -37,16 +37,16 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
     registerHash
   } = useRegisterDomain()
 
-  // Tự động tạo secret cố định (giống NestJS)
+  // Automatically create fixed secret (similar to NestJS)
   useEffect(() => {
     if (!secret) {
       console.log('secret not found')
-      // Sử dụng secret cố định giống NestJS để đảm bảo consistency
+      // Use fixed secret similar to NestJS to ensure consistency
       setSecret('fixed-secret-for-ens-registration')
     }
   }, [])
 
-  // Đếm ngược 60 giây sau khi commit
+  // Countdown 60 seconds after commit
   useEffect(() => {
     let interval: NodeJS.Timeout
     if (step === 'wait' && waitTime > 0) {
@@ -63,32 +63,32 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
     return () => clearInterval(interval)
   }, [step, waitTime])
 
-  // Theo dõi trạng thái commit transaction
+  // Monitor commit transaction status
   useEffect(() => {
     if (commitHash && step === 'commit') {
       setStep('wait')
-      // Sử dụng thời gian thực tế từ contract
+      // Use actual time from contract
       if (minCommitmentAge) {
-        const waitTimeSeconds = Number(minCommitmentAge) + 5 // Thêm 5 giây buffer
+        const waitTimeSeconds = Number(minCommitmentAge) + 5 // Add 5 seconds buffer
         setWaitTime(waitTimeSeconds)
         console.log('Set wait time to:', waitTimeSeconds, 'seconds (minCommitmentAge:', Number(minCommitmentAge), ')')
       } else {
-        setWaitTime(60) // Fallback 60 giây
+        setWaitTime(60) // Fallback 60 seconds
         console.log('Using fallback wait time: 60 seconds')
       }
     }
   }, [commitHash, step, minCommitmentAge])
 
-  // Theo dõi trạng thái register transaction - chỉ reset khi transaction thành công
+  // Monitor register transaction status - only reset when transaction succeeds
   useEffect(() => {
     if (registerHash && !isRegistering) {
-      // Hiển thị thông báo thành công với tên domain đầy đủ
+      // Show success message with full domain name
       setSuccessMessage(`Domain ${domainName}.hii has been registered successfully!`)
       setStep('success')
       
-      // Chỉ gọi onSuccess để refresh danh sách, không tự động reset form
+      // Only call onSuccess to refresh list, don't auto-reset form
       console.log('Calling onSuccess to refresh domain list...')
-      onSuccess() // Gọi để refresh danh sách domain
+      onSuccess() // Call to refresh domain list
     }
   }, [registerHash, isRegistering, onSuccess, domainName])
 

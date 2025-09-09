@@ -7,7 +7,7 @@ export const graphqlClient = new GraphQLClient(
   process.env.NEXT_PUBLIC_CUSTOM_NETWORK_SUBGRAPH_URL || 'http://103.69.99.58:8000/subgraphs/name/graphprotocol/ens_hii'
 )
 
-// Query để lấy tất cả domains (không filter theo owner)
+// Query to get all domains (no owner filter)
 export const GET_ALL_DOMAINS = `
   query GetAllDomains {
     domains(
@@ -33,7 +33,7 @@ export const GET_ALL_DOMAINS = `
   }
 `
 
-// Query để lấy danh sách domains của một owner (fallback)
+// Query to get domain list of an owner (fallback)
 export const GET_DOMAINS_BY_OWNER = `
   query GetDomainsByOwner($owner: String!) {
     domains(
@@ -60,7 +60,7 @@ export const GET_DOMAINS_BY_OWNER = `
   }
 `
 
-// Query để lấy thông tin chi tiết của một domain
+// Query to get detailed information of a domain
 export const GET_DOMAIN_DETAILS = `
   query GetDomainDetails($id: String!) {
     domain(id: $id) {
@@ -134,7 +134,7 @@ export interface DomainDetailsResponse {
   domain: Domain
 }
 
-// Hàm helper để fetch domains của owner
+// Helper function to fetch owner's domains
 export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
   try {
     console.log('=== FETCHING DOMAINS FROM GRAPHQL ===')
@@ -143,14 +143,14 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
     
     let response: DomainsResponse
     
-    // Thử lấy tất cả domains trước
+    // Try to get all domains first
     try {
       console.log('Trying to fetch all domains first...')
       response = await graphqlClient.request<DomainsResponse>(GET_ALL_DOMAINS)
       console.log('All domains fetched:', response.domains.length)
     } catch (allDomainsError) {
       console.log('Failed to fetch all domains, trying owner filter...', allDomainsError)
-      // Fallback: thử filter theo owner
+      // Fallback: try filtering by owner
       response = await graphqlClient.request<DomainsResponse>(
         GET_DOMAINS_BY_OWNER,
         { owner: owner.toLowerCase() }
@@ -160,11 +160,11 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
     console.log('Raw GraphQL response:', response)
     console.log('Domains count:', response.domains.length)
     
-    // Filter domains theo owner và clean up
+    // Filter domains by owner and clean up
     const ownerDomains = []
     
     for (const domain of response.domains) {
-      // Kiểm tra owner match - có thể là direct owner hoặc NameWrapper
+      // Check owner match - can be direct owner or NameWrapper
       const directOwnerMatch = domain.owner?.id?.toLowerCase() === owner.toLowerCase()
       
       if (directOwnerMatch) {
@@ -173,23 +173,23 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
         continue
       }
       
-      // Nếu không match direct owner, có thể domain được wrapped trong NameWrapper
-      // Trong trường hợp này, domain.owner sẽ là NameWrapper contract address
-      // và chúng ta cần kiểm tra NameWrapper owner
+      // If not matching direct owner, domain might be wrapped in NameWrapper
+      // In this case, domain.owner will be NameWrapper contract address
+      // and we need to check NameWrapper owner
       
       console.log('Domain not directly owned by user:', domain.name, 'Owner:', domain.owner?.id)
       
-      // Kiểm tra NameWrapper ownership
+      // Check NameWrapper ownership
       try {
         const ownershipResult = await checkNameWrapperOwnership(domain.name, owner)
         if (ownershipResult.isOwner) {
           console.log('Domain owned by user via NameWrapper:', domain.name)
           
-          // Tạo domain object mới với owner thực tế thay vì NameWrapper
+          // Create new domain object with real owner instead of NameWrapper
           const domainWithRealOwner = {
             ...domain,
             owner: {
-              id: ownershipResult.realOwner || owner // Sử dụng realOwner từ NameWrapper
+              id: ownershipResult.realOwner || owner // Use realOwner from NameWrapper
             }
           }
           
@@ -199,15 +199,15 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
         }
       } catch (error) {
         console.log('Error checking NameWrapper ownership for:', domain.name, error)
-        // Không thêm domain nếu có lỗi
+        // Don't add domain if there's an error
       }
     }
     
     console.log('Domains owned by user:', ownerDomains.length)
     
-    // Filter và clean up domains
+    // Filter and clean up domains
     const validDomains = ownerDomains.filter(domain => {
-      // Bỏ qua domains có name là hash hoặc labelName null
+      // Skip domains with hash names or null labelName
       const isValid = domain.name && 
                      domain.labelName && 
                      !domain.name.startsWith('[') && 
@@ -231,7 +231,7 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
   }
 }
 
-// Hàm helper để fetch chi tiết domain
+// Helper function to fetch domain details
 export async function fetchDomainDetails(id: string): Promise<Domain | null> {
   try {
     const response = await graphqlClient.request<DomainDetailsResponse>(
@@ -247,10 +247,10 @@ export async function fetchDomainDetails(id: string): Promise<Domain | null> {
 
 
 
-// Hàm để check NameWrapper ownership và lấy owner thực tế
+// Function to check NameWrapper ownership and get real owner
 async function checkNameWrapperOwnership(domainName: string, userAddress: string): Promise<{ isOwner: boolean; realOwner?: string }> {
   try {
-    // Tạo public client
+    // Create public client
     const publicClient = createPublicClient({
       chain: {
         id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
@@ -273,10 +273,10 @@ async function checkNameWrapperOwnership(domainName: string, userAddress: string
       return { isOwner: false }
     }
 
-    // Tạo domain node
+    // Create domain node
     const node = namehash(domainName)
     
-    // Kiểm tra owner từ NameWrapper
+    // Check owner from NameWrapper
     const nameWrapperOwner = await publicClient.readContract({
       address: NAME_WRAPPER_ADDRESS as `0x${string}`,
       abi: [

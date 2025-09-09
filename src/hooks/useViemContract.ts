@@ -28,7 +28,7 @@ const hiiNetwork = defineChain({
   },
 });
 
-// Hook để gọi rentPrice bằng viem trực tiếp
+// Hook to call rentPrice using viem directly
 export function useViemRentPrice(name: string | null, duration: number | null = 1) {
   const [data, setData] = useState<{base: bigint, premium: bigint} | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -103,7 +103,7 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
   }
 }
 
-// Hook để kiểm tra domain availability bằng viem trực tiếp
+// Hook to check domain availability using viem directly
 export function useViemAvailability(name: string) {
   const [data, setData] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -169,7 +169,7 @@ export function useViemAvailability(name: string) {
   }
 }
 
-// Hook để lấy địa chỉ ví từ MetaMask thay thế wagmi useAccount
+// Hook to get wallet address from MetaMask replacing wagmi useAccount
 export function useViemAccount() {
   const [address, setAddress] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
@@ -260,7 +260,7 @@ export function useViemAccount() {
   }
 }
 
-// Hook để thay thế wagmi useWriteContract
+// Hook to replace wagmi useWriteContract
 export function useViemWriteContract() {
   const [data, setData] = useState<string | null>(null) // transaction hash
   const [isPending, setIsPending] = useState(false)
@@ -320,7 +320,7 @@ export function useViemWriteContract() {
   }
 }
 
-// Hook để thay thế wagmi useWaitForTransactionReceipt
+// Hook to replace wagmi useWaitForTransactionReceipt
 export function useViemWaitForTransactionReceipt(hash: string | null) {
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
@@ -379,7 +379,7 @@ export function useViemWaitForTransactionReceipt(hash: string | null) {
   }
 }
 
-// Hook để tạo commitment hash bằng viem trực tiếp
+// Hook to create commitment hash using viem directly
 export function useViemMakeCommitment(
   name: string | null,
   owner: string | null,

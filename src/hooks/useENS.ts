@@ -8,18 +8,18 @@ import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
 import PublicResolverABI from '@/contracts/ABIs/PublicResolver.json'
 import { useToast } from '@/components/Toast'
 
-// Function sleep giống như NestJS
+// Sleep function similar to NestJS
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// Function để tạo resolver data giống như NestJS
+// Function to create resolver data similar to NestJS
 async function makeData(domain: string, address: string, email?: string): Promise<readonly `0x${string}`[]> {
   try {
     const node = namehash(domain)
     const normalizedAddress = getAddress(address)
     
-    // Encode setAddr function call giống như NestJS - sử dụng ABI từ PublicResolver
+    // Encode setAddr function call similar to NestJS - using ABI from PublicResolver
     const encodedSetAddr = encodeFunctionData({
       abi: PublicResolverABI.abi,
       functionName: 'setAddr',
@@ -33,7 +33,7 @@ async function makeData(domain: string, address: string, email?: string): Promis
     const dataList: `0x${string}`[] = [encodedSetAddr]
 
     if (email) {
-      // Encode setText function call giống như NestJS - sử dụng ABI từ PublicResolver
+      // Encode setText function call similar to NestJS - using ABI from PublicResolver
       const encodedSetText = encodeFunctionData({
         abi: PublicResolverABI.abi,
         functionName: 'setText',
@@ -49,11 +49,11 @@ async function makeData(domain: string, address: string, email?: string): Promis
     return dataList
   } catch (error) {
 
-    throw new Error(`Không thể tạo data cho tên miền ${domain}: ${error}`)
+    throw new Error(`Cannot create data for domain ${domain}: ${error}`)
   }
 }
 
-// Hook để kiểm tra commitment validity
+// Hook to check commitment validity
 export function useCommitmentValidity(commitmentHash: string | null) {
   const result = useReadContract({
     address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
@@ -108,7 +108,7 @@ export function useDomainAvailability(name: string) {
   }
 }
 
-// Hook để lấy danh sách domains của user
+// Hook to get user's domain list
 export function useUserDomains() {
   const { address } = useAccount()
   const { addToast } = useToast()
@@ -155,7 +155,7 @@ export function useUserDomains() {
   }
 }
 
-// Hook để lấy giá đăng ký domain
+// Hook to get domain registration price
 export function useRentPrice(name: string, duration: number) {
 
   
@@ -177,7 +177,7 @@ export function useRentPrice(name: string, duration: number) {
   return result
 }
 
-// Hook để đăng ký domain mới
+// Hook to register new domain
 export function useRegisterDomain() {
   const { address: account, isConnected, status } = useAccount()
   const { data: balance } = useBalance({ address: account })
@@ -203,7 +203,7 @@ export function useRegisterDomain() {
     hash: registerHash,
   })
 
-  // Reset states khi commit thành công
+  // Reset states when commit is successful
   useEffect(() => {
     if (isCommitSuccess && !hasShownCommitSuccess) {
       setIsCommitting(false)
@@ -217,7 +217,7 @@ export function useRegisterDomain() {
     }
   }, [isCommitSuccess, hasShownCommitSuccess, addToast])
 
-  // Reset states khi register thành công hoặc thất bại
+  // Reset states when register succeeds or fails
   useEffect(() => {
     if (isRegisterSuccess && !hasShownRegisterSuccess) {
       setIsRegistering(false)
@@ -262,7 +262,7 @@ export function useRegisterDomain() {
 
 
 
-  // Bước 1: Tạo commitment
+  // Step 1: Create commitment
   const makeCommitment = useCallback(async (
     name: string,
     owner: string,
@@ -294,7 +294,7 @@ export function useRegisterDomain() {
       // Create resolver data
       const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
 
-      // Sử dụng contract function để tạo commitment hash (giống backend)
+      // Use contract function to create commitment hash (similar to backend)
       if (!publicClient) {
         throw new Error('Public client not available')
       }
@@ -306,7 +306,7 @@ export function useRegisterDomain() {
         args: [
           name,
           owner as `0x${string}`,
-          BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
+          BigInt(60 * 60 * 24 * 30), // 30 days like NestJS
           keccak256(encodePacked(['string'], [secret])),
           HNS_CONTRACTS.PUBLIC_RESOLVER,
           resolverData,
@@ -319,7 +319,7 @@ export function useRegisterDomain() {
 
       setCommitmentHash(commitmentHash as string)
       
-      // Gửi commitment transaction
+      // Send commitment transaction
       writeCommit({
         address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
         abi: ETHRegistrarControllerABI.abi,
@@ -337,7 +337,7 @@ export function useRegisterDomain() {
     }
   }, [writeCommit, isConnected, account, publicClient])
 
-  // Bước 2: Đăng ký domain sau khi chờ 60 giây
+  // Step 2: Register domain after waiting 60 seconds
   const registerDomain = useCallback(async (
     name: string,
     owner: string,
@@ -366,7 +366,7 @@ export function useRegisterDomain() {
       return
     }
 
-    // Đảm bảo owner address khớp với account đã kết nối
+    // Ensure owner address matches connected account
     if (owner.toLowerCase() !== account.toLowerCase()) {
       setError('Owner address must match connected wallet address')
       return
@@ -383,7 +383,7 @@ export function useRegisterDomain() {
     try {
       const secretHash = keccak256(encodePacked(['string'], [secret]))
       
-      // Kiểm tra commitment age trước khi register
+      // Check commitment age before register
       if (publicClient && commitmentHash) {
         try {
 
@@ -414,17 +414,17 @@ export function useRegisterDomain() {
           
 
           
-          // Kiểm tra commitment có tồn tại không
+          // Check if commitment exists
           if (commitmentTimestamp === BigInt(0)) {
             throw new Error('Commitment not found or already used')
           }
           
-          // Kiểm tra commitment có hết hạn không
+          // Check if commitment has expired
           if (currentTime > validEnd) {
             throw new Error(`Commitment expired. Valid window: ${validStart} - ${validEnd}, current: ${currentTime}`)
           }
           
-          // Đợi thêm 5 giây như NestJS để đảm bảo commitment đủ tuổi
+          // Wait additional 5 seconds like NestJS to ensure commitment is old enough
           const requiredAge = minCommitmentAge + BigInt(5)
           if (commitmentAge < requiredAge) {
             const waitTime = Number(requiredAge - commitmentAge)
@@ -441,19 +441,19 @@ export function useRegisterDomain() {
         throw new Error('Public client or commitment hash not available')
       }
       
-      // Sửa logic tính toán gas - không tính gas cost vào total cost
-      // Chỉ tính rent price + buffer nhỏ cho gas
+      // Fix gas calculation logic - don't include gas cost in total cost
+      // Only calculate rent price + small buffer for gas
       const gasBuffer = price / BigInt(20) // 5% buffer cho gas
       const totalCost = price + gasBuffer
       
-      // Gas limit cho register transaction - sử dụng gas estimate thực tế
+      // Gas limit for register transaction - use actual gas estimate
       let finalGasLimit = BigInt(500000) // Default gas limit
       
       try {
-        // Tạo resolver data giống như NestJS
+        // Create resolver data similar to NestJS
         const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
 
-        // Thử estimate gas cho register transaction
+        // Try to estimate gas for register transaction
         if (publicClient) {
           const estimatedGas = await publicClient.estimateContractGas({
             address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
@@ -462,7 +462,7 @@ export function useRegisterDomain() {
             args: [
               name,
               owner as `0x${string}`,
-              BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
+              BigInt(60 * 60 * 24 * 30), // 30 days like NestJS
               secretHash,
               HNS_CONTRACTS.PUBLIC_RESOLVER,
               resolverData,
@@ -472,14 +472,14 @@ export function useRegisterDomain() {
             value: price,
             account: account as `0x${string}`
           })
-          finalGasLimit = (estimatedGas * BigInt(120)) / BigInt(100) // Thêm 20% như NestJS
+          finalGasLimit = (estimatedGas * BigInt(120)) / BigInt(100) // Add 20% like NestJS
 
         } else {
 
         }
       } catch (gasError) {
 
-        // Sử dụng default gas limit nếu estimation thất bại
+        // Use default gas limit if estimation fails
       }
 
       // Check balance before transaction (unless skipped)
@@ -534,7 +534,7 @@ export function useRegisterDomain() {
       // console.log('=============================')
       
       try {
-        // Tạo resolver data giống như NestJS
+        // Create resolver data similar to NestJS
         const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
 
 
@@ -546,16 +546,16 @@ export function useRegisterDomain() {
           args: [
             name,
             owner as `0x${string}`,
-            BigInt(60 * 60 * 24 * 30), // 30 ngày như NestJS
+            BigInt(60 * 60 * 24 * 30), // 30 days like NestJS
             secretHash,
             HNS_CONTRACTS.PUBLIC_RESOLVER,
             resolverData as readonly `0x${string}`[],
             true, // Set reverseRecord to true
             0
           ],
-          value: price, // Sử dụng giá gốc
-          gas: finalGasLimit, // Sử dụng final gas limit
-          account: account as `0x${string}` // Đảm bảo sử dụng đúng account
+          value: price, // Use original price
+          gas: finalGasLimit, // Use final gas limit
+          account: account as `0x${string}` // Ensure using correct account
         })
       } catch (writeError) {
         setError(`Transaction error: ${writeError instanceof Error ? writeError.message : 'Unknown error'}`)
@@ -582,7 +582,7 @@ export function useRegisterDomain() {
   }
 }
 
-// Hook để gia hạn domain
+// Hook to renew domain
 export function useRenewDomain() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -628,7 +628,7 @@ export function useRenewDomain() {
   }
 }
 
-// Hook để chuyển ownership domain
+// Hook to transfer domain ownership
 export function useTransferDomain() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -652,10 +652,10 @@ export function useTransferDomain() {
     setLoading(true)
     
     try {
-      // Tính toán node hash cho domain
+      // Calculate node hash for domain
       const node = namehash(`${domainName}.hii`)
       
-      // Kiểm tra xem domain có được wrapped trong NameWrapper không
+      // Check if domain is wrapped in NameWrapper
       const publicClient = createPublicClient({
         chain: {
           id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
@@ -670,7 +670,7 @@ export function useTransferDomain() {
         transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!)
       })
       
-      // Kiểm tra owner từ ENS Registry
+      // Check owner from ENS Registry
       const registryOwner = await publicClient.readContract({
         address: HNS_CONTRACTS.REGISTRY,
         abi: HNS_REGISTRY_ABI,
@@ -680,15 +680,15 @@ export function useTransferDomain() {
       
 
       
-      // Nếu owner là NameWrapper, kiểm tra BaseRegistrar ownership
+      // If owner is NameWrapper, check BaseRegistrar ownership
       if (registryOwner.toLowerCase() === HNS_CONTRACTS.NAME_WRAPPER.toLowerCase()) {
 
         
-        // Tính tokenId từ label hash
+        // Calculate tokenId from label hash
         const labelHash = keccak256(encodePacked(['string'], [domainName.split('.')[0]]))
         const tokenId = BigInt(labelHash)
         
-        // Kiểm tra owner của token trong BaseRegistrar
+        // Check token owner in BaseRegistrar
         const baseRegistrarOwner = await publicClient.readContract({
           address: HNS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
           abi: [
@@ -706,7 +706,7 @@ export function useTransferDomain() {
         
 
         
-        // Nếu BaseRegistrar owner là user, sử dụng BaseRegistrar transfer
+        // If BaseRegistrar owner is user, use BaseRegistrar transfer
         if (baseRegistrarOwner.toLowerCase() === address?.toLowerCase()) {
 
           
@@ -731,7 +731,7 @@ export function useTransferDomain() {
         } else {
 
           
-          // Lấy resolver hiện tại
+          // Get current resolver
           const currentResolver = await publicClient.readContract({
             address: HNS_CONTRACTS.REGISTRY,
             abi: HNS_REGISTRY_ABI,
@@ -739,7 +739,7 @@ export function useTransferDomain() {
             args: [node]
           })
           
-          // Lấy TTL hiện tại
+          // Get current TTL
           const currentTTL = await publicClient.readContract({
             address: HNS_CONTRACTS.REGISTRY,
             abi: HNS_REGISTRY_ABI,
@@ -801,7 +801,7 @@ export function useTransferDomain() {
   }
 }
 
-// Function để fetch domains trực tiếp từ blockchain
+// Function to fetch domains directly from blockchain
 async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[]> {
   try {
 
@@ -809,7 +809,7 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
     // Import viem modules
     const { createPublicClient, http } = await import('viem')
     
-    // Tạo public client để đọc từ blockchain
+    // Create public client to read from blockchain
     const publicClient = createPublicClient({
       chain: {
         id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
@@ -826,9 +826,9 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
 
     const domains: Domain[] = []
     
-    // Lấy events NameRegistered từ ETHRegistrarController
+    // Get NameRegistered events from ETHRegistrarController
     const currentBlock = await publicClient.getBlockNumber()
-    const fromBlock = currentBlock - BigInt(10000) // Lấy 10000 blocks gần nhất
+    const fromBlock = currentBlock - BigInt(10000) // Get latest 10000 blocks
     
 
     
@@ -844,7 +844,7 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
     const logs = await publicClient.getLogs(filter)
 
     
-    // Xử lý từng event
+    // Process each event
     for (const log of logs) {
       try {
         // Decode event data
@@ -858,11 +858,11 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
         if (decoded.eventName === 'NameRegistered') {
           const { name, labelHash, expires } = decoded.args as any
           
-          // Tạo domain node
+          // Create domain node
           const domainName = `${name}.hii`
           const node = namehash(domainName)
           
-          // Kiểm tra owner hiện tại
+          // Check current owner
           const currentOwner = await publicClient.readContract({
             address: HNS_CONTRACTS.REGISTRY,
         abi: HNS_REGISTRY_ABI,
@@ -870,11 +870,11 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
             args: [node]
           })
           
-          // Chỉ lấy domains thuộc về owner này
+          // Only get domains belonging to this owner
 
           
           if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
-            // Sử dụng giá trị mặc định cho resolver và TTL
+            // Use default values for resolver and TTL
             const resolverAddress = '0x0000000000000000000000000000000000000000'
             const ttl = BigInt(0)
             

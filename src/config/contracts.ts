@@ -1,4 +1,4 @@
-// Địa chỉ các contract HNS trên Hii Network
+// HNS contract addresses on Hii Network
 export const HNS_CONTRACTS = {
   MULTICALL: process.env.NEXT_PUBLIC_CONTRACT_MULTICALL as `0x${string}`,
   BASE_REGISTRAR_IMPLEMENTATION: process.env.NEXT_PUBLIC_CONTRACT_BASE_REGISTRAR_IMPLEMENTATION as `0x${string}`,

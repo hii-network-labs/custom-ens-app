@@ -27,19 +27,19 @@ export default function HNSApp() {
     setIsClient(true)
   }, [])
 
-  // Tự động fetch domains khi kết nối ví
+  // Automatically fetch domains when wallet is connected
   useEffect(() => {
     if (isConnected && address) {
       refetch()
     }
   }, [isConnected, address, refetch])
 
-  // Kết nối MetaMask
+  // Connect MetaMask
   const handleConnect = () => {
     connect({ connector: metaMask() })
   }
 
-  // Ngắt kết nối ví
+  // Disconnect wallet
   const handleDisconnect = () => {
     disconnect()
   }

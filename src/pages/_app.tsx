@@ -7,7 +7,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import Footer from '@/components/Footer'
 import '@/styles/globals.css'
 
-// Tạo QueryClient cho React Query
+// Create QueryClient for React Query
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

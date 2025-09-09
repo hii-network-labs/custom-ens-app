@@ -2,7 +2,7 @@ import { http, createConfig } from 'wagmi'
 import { metaMask } from 'wagmi/connectors'
 import { defineChain } from 'viem'
 
-// Định nghĩa Hii Network chain
+// Define Hii Network chain
 export const hiiNetwork = defineChain({
   id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
   name: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NAME!,
@@ -24,7 +24,7 @@ export const hiiNetwork = defineChain({
   },
 })
 
-// Cấu hình wagmi với Hii Network
+// Configure wagmi with Hii Network
 export const config = createConfig({
   chains: [hiiNetwork],
   connectors: [
