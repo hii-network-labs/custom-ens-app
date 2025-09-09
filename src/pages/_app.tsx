@@ -3,10 +3,11 @@ import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { config } from '@/config/wagmi'
 import { ToastProvider } from '@/components/Toast'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
+import ErrorBoundary from '@/components/ErrorBoundary'
+import Footer from '@/components/Footer'
 import '@/styles/globals.css'
 
-// Tạo QueryClient cho React Query
+// Create QueryClient for React Query
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -19,13 +20,14 @@ const queryClient = new QueryClient({
 export default function App({ Component, pageProps }: AppProps) {
   return (
     <ErrorBoundary>
-      <WagmiProvider config={config}>
-        <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            <Component {...pageProps} />
-          </ToastProvider>
-        </QueryClientProvider>
-      </WagmiProvider>
-    </ErrorBoundary>
+          <WagmiProvider config={config}>
+            <QueryClientProvider client={queryClient}>
+              <ToastProvider>
+                <Component {...pageProps} />
+                <Footer />
+              </ToastProvider>
+            </QueryClientProvider>
+          </WagmiProvider>
+        </ErrorBoundary>
   )
 }

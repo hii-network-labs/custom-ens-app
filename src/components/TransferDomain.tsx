@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { isAddress } from 'viem'
 import { useTransferDomain } from '@/hooks/useENS'
 import { Domain } from '@/lib/graphql'
