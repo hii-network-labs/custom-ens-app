@@ -1,4 +1,5 @@
 // TLD Configuration for HNS (HII Name Service)
+import { getAllTLDConfigs, getTLDConfigData, getSupportedTLDStrings, getPrimaryTLDConfig, type TLDConfigData } from './configLoader'
 
 export interface TLDConfig {
   tld: string
@@ -15,76 +16,164 @@ export interface TLDConfig {
   defaultEmail?: string
 }
 
-// Default TLD configurations
-export const DEFAULT_TLD_CONFIGS: TLDConfig[] = [
-  {
-    tld: '.hii',
-    name: 'HII',
-    description: 'Primary HNS domain for Hii Network',
-    color: 'blue',
-    isPrimary: true,
-    abiFolder: 'hii',
-    registrarController: process.env.NEXT_PUBLIC_CONTRACT_HII_REGISTRAR_CONTROLLER,
-    nameWrapper: process.env.NEXT_PUBLIC_CONTRACT_HII_NAME_WRAPPER,
-    publicResolver: process.env.NEXT_PUBLIC_CONTRACT_HII_PUBLIC_RESOLVER,
-    defaultEmail: process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hii.network',
-  },
-  {
-    tld: '.hi',
-    name: 'HI',
-    description: 'Short form domain for quick access',
-    color: 'purple',
-    isPrimary: false,
-    abiFolder: 'hi',
-    registrarController: process.env.NEXT_PUBLIC_CONTRACT_HI_REGISTRAR_CONTROLLER,
-    nameWrapper: process.env.NEXT_PUBLIC_CONTRACT_HI_NAME_WRAPPER,
-    publicResolver: process.env.NEXT_PUBLIC_CONTRACT_HI_PUBLIC_RESOLVER,
-    defaultEmail: process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hi.network',
-  },
-]
+// Cache for loaded TLD configurations
+let cachedTLDConfigs: TLDConfig[] | null = null
 
-// Get supported TLDs from environment or use defaults
-export function getSupportedTLDs(): string[] {
+// Convert TLDConfigData to TLDConfig format
+function convertToTLDConfig(configData: TLDConfigData): TLDConfig {
+  return {
+    tld: configData.tld,
+    name: configData.name,
+    description: configData.description,
+    color: configData.color,
+    isPrimary: configData.isPrimary,
+    abiFolder: configData.abiFolder,
+    registrarController: configData.contracts.registrarController,
+    nameWrapper: configData.contracts.nameWrapper,
+    publicResolver: configData.contracts.publicResolver,
+    defaultEmail: configData.defaultEmail,
+  }
+}
+
+// Load and cache TLD configurations
+async function loadTLDConfigs(): Promise<TLDConfig[]> {
+  if (cachedTLDConfigs) {
+    return cachedTLDConfigs
+  }
+  
+  try {
+    const configData = await getAllTLDConfigs()
+    cachedTLDConfigs = configData.map(convertToTLDConfig)
+    return cachedTLDConfigs
+  } catch (error) {
+    console.error('Failed to load TLD configurations:', error)
+    // Fallback to empty array if loading fails
+    return []
+  }
+}
+
+// Get default TLD configurations (async version)
+export async function getDefaultTLDConfigs(): Promise<TLDConfig[]> {
+  return await loadTLDConfigs()
+}
+
+// Synchronous version for backward compatibility (uses cached data)
+export const DEFAULT_TLD_CONFIGS: TLDConfig[] = []
+
+// Get supported TLDs from configuration
+export async function getSupportedTLDs(): Promise<string[]> {
+  try {
+    return await getSupportedTLDStrings()
+  } catch (error) {
+    console.error('Failed to get supported TLDs:', error)
+    return []
+  }
+}
+
+// Synchronous version for backward compatibility (uses environment fallback)
+export function getSupportedTLDsSync(): string[] {
   const envTLDs = process.env.NEXT_PUBLIC_SUPPORTED_TLDS
   if (envTLDs) {
     return envTLDs.split(',').map(tld => tld.trim())
   }
-  return DEFAULT_TLD_CONFIGS.map(config => config.tld)
+  // Fallback to cached data if available
+  return cachedTLDConfigs?.map(config => config.tld) || ['.hii', '.hi']
 }
 
 // Get default TLD (first supported TLD or fallback)
-export function getDefaultTLD(): string {
-  const supportedTLDs = getSupportedTLDs()
-  const primaryTLD = DEFAULT_TLD_CONFIGS.find(config => config.isPrimary)?.tld
-  return primaryTLD || supportedTLDs[0] || '.hii'
+export async function getDefaultTLD(): Promise<string> {
+  try {
+    const primaryConfig = await getPrimaryTLDConfig()
+    if (primaryConfig) {
+      return primaryConfig.tld
+    }
+    const configs = await getDefaultTLDConfigs()
+    return configs[0]?.tld || '.hii'
+  } catch (error) {
+    console.error('Failed to get default TLD:', error)
+    return '.hii'
+  }
+}
+
+// Synchronous version for backward compatibility
+export function getDefaultTLDSync(): string {
+  const envDefault = process.env.NEXT_PUBLIC_DEFAULT_TLD
+  if (envDefault) {
+    return envDefault
+  }
+  // Fallback to cached data if available
+  const primaryConfig = cachedTLDConfigs?.find(config => config.isPrimary)
+  return primaryConfig?.tld || cachedTLDConfigs?.[0]?.tld || '.hii'
 }
 
 // Get default email for a TLD
-export function getDefaultEmail(tld?: string): string {
-  const currentTLD = tld || getDefaultTLD()
-  const config = getTLDConfig(currentTLD)
-  return config?.defaultEmail || 'contact@hii.network'
+export async function getDefaultEmail(tld?: string): Promise<string> {
+  try {
+    if (tld) {
+      const config = await getTLDConfigData(tld)
+      if (config) {
+        return config.defaultEmail
+      }
+    } else {
+      const primaryConfig = await getPrimaryTLDConfig()
+      if (primaryConfig) {
+        return primaryConfig.defaultEmail
+      }
+    }
+    return process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hii.network'
+  } catch (error) {
+    console.error('Failed to get default email:', error)
+    return process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hii.network'
+  }
 }
 
-// Get TLD configuration by TLD string
-export function getTLDConfig(tld: string): TLDConfig | undefined {
-  return DEFAULT_TLD_CONFIGS.find(config => config.tld === tld)
+// Synchronous version for backward compatibility
+export function getDefaultEmailSync(tld?: string): string {
+  if (cachedTLDConfigs) {
+    const config = tld ? cachedTLDConfigs.find(c => c.tld === tld) : cachedTLDConfigs.find(c => c.isPrimary)
+    if (config) {
+      return config.defaultEmail || 'contact@hii.network'
+    }
+  }
+  return 'contact@hii.network'
 }
 
-// Get available TLD configurations (filtered by supported TLDs)
-export function getAvailableTLDConfigs(): TLDConfig[] {
-  const supportedTLDs = getSupportedTLDs()
-  return DEFAULT_TLD_CONFIGS.filter(config => supportedTLDs.includes(config.tld))
+// Get TLD configuration by TLD string (async)
+export async function getTLDConfig(tld: string): Promise<TLDConfig | undefined> {
+  const configs = await getDefaultTLDConfigs()
+  return configs.find(config => config.tld === tld)
 }
 
-// Check if TLD is supported
-export function isTLDSupported(tld: string): boolean {
-  return getSupportedTLDs().includes(tld)
+// Synchronous version for backward compatibility
+export function getTLDConfigSync(tld: string): TLDConfig | undefined {
+  return cachedTLDConfigs?.find(config => config.tld === tld)
 }
 
-// Extract TLD from full domain name
-export function extractTLD(fullDomain: string): string | null {
-  const supportedTLDs = getSupportedTLDs()
+// Get available TLD configurations (async)
+export async function getAvailableTLDConfigs(): Promise<TLDConfig[]> {
+  return await getDefaultTLDConfigs()
+}
+
+// Synchronous version for backward compatibility
+export function getAvailableTLDConfigsSync(): TLDConfig[] {
+  return cachedTLDConfigs || []
+}
+
+// Check if TLD is supported (async)
+export async function isTLDSupported(tld: string): Promise<boolean> {
+  const supportedTLDs = await getSupportedTLDs()
+  return supportedTLDs.includes(tld)
+}
+
+// Synchronous version for backward compatibility
+export function isTLDSupportedSync(tld: string): boolean {
+  const supportedTLDs = getSupportedTLDsSync()
+  return supportedTLDs.includes(tld)
+}
+
+// Extract TLD from full domain name (async)
+export async function extractTLD(fullDomain: string): Promise<string | null> {
+  const supportedTLDs = await getSupportedTLDs()
   for (const tld of supportedTLDs) {
     if (fullDomain.endsWith(tld)) {
       return tld
@@ -93,9 +182,29 @@ export function extractTLD(fullDomain: string): string | null {
   return null
 }
 
-// Extract domain name without TLD
-export function extractDomainName(fullDomain: string): string {
-  const tld = extractTLD(fullDomain)
+// Synchronous version for backward compatibility
+export function extractTLDSync(fullDomain: string): string | null {
+  const supportedTLDs = getSupportedTLDsSync()
+  for (const tld of supportedTLDs) {
+    if (fullDomain.endsWith(tld)) {
+      return tld
+    }
+  }
+  return null
+}
+
+// Extract domain name without TLD (async)
+export async function extractDomainName(fullDomain: string): Promise<string> {
+  const tld = await extractTLD(fullDomain)
+  if (tld) {
+    return fullDomain.slice(0, -tld.length)
+  }
+  return fullDomain
+}
+
+// Synchronous version for backward compatibility
+export function extractDomainNameSync(fullDomain: string): string {
+  const tld = extractTLDSync(fullDomain)
   if (tld) {
     return fullDomain.slice(0, -tld.length)
   }
@@ -104,7 +213,15 @@ export function extractDomainName(fullDomain: string): string {
 
 // Get contract address for specific TLD and contract type
 export function getTLDContractAddress(tld: string, contractType: 'registrarController'): string | undefined {
-  const config = getTLDConfig(tld)
+  const config = getTLDConfigSync(tld)
+  if (!config) return undefined
+  
+  return config[contractType]
+}
+
+// Async version
+export async function getTLDContractAddressAsync(tld: string, contractType: 'registrarController'): Promise<string | undefined> {
+  const config = await getTLDConfig(tld)
   if (!config) return undefined
   
   return config[contractType]
@@ -123,7 +240,7 @@ export function getTLDColorClasses(tld: string): {
   border: string
   hover: string
 } {
-  const config = getTLDConfig(tld)
+  const config = getTLDConfigSync(tld)
   const color = config?.color || 'blue'
   
   const colorMap = {
@@ -157,8 +274,18 @@ export function getTLDColorClasses(tld: string): {
 }
 
 // Export constants for easy access
+// Initialize cache on module load
+loadTLDConfigs().catch(console.error)
+
+// TLD constants (synchronous versions for immediate access)
 export const TLD_CONSTANTS = {
-  SUPPORTED_TLDS: getSupportedTLDs(),
-  DEFAULT_TLD: getDefaultTLD(),
-  AVAILABLE_CONFIGS: getAvailableTLDConfigs(),
+  get SUPPORTED_TLDS() {
+    return getSupportedTLDsSync()
+  },
+  get DEFAULT_TLD() {
+    return getDefaultTLDSync()
+  },
+  get AVAILABLE_CONFIGS() {
+    return getAvailableTLDConfigsSync()
+  },
 } as const
