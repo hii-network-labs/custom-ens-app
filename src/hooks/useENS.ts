@@ -3,10 +3,10 @@ import { useAccount, useWriteContract, useReadContract, useWaitForTransactionRec
 import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFunctionData, createPublicClient, http } from 'viem'
 
 import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, HNS_REGISTRY_ABI } from '@/config/contracts'
-import ETHRegistrarControllerABI from '@/contracts/ABIs/ETHRegistrarController.json'
 import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
-import PublicResolverABI from '@/contracts/ABIs/PublicResolver.json'
 import { useToast } from '@/components/Toast'
+import { TLDConfig, getTLDConfig, getDefaultTLD, getDefaultEmail, extractTLD, extractDomainName } from '../config/tlds'
+import { loadContractABI, getContractAddress } from '@/utils/contractLoader'
 
 // Sleep function similar to NestJS
 function sleep(ms: number): Promise<void> {
@@ -14,14 +14,22 @@ function sleep(ms: number): Promise<void> {
 }
 
 // Function to create resolver data similar to NestJS
-async function makeData(domain: string, address: string, email?: string): Promise<readonly `0x${string}`[]> {
+async function makeData(domain: string, address: string, email?: string, tldConfig?: TLDConfig): Promise<readonly `0x${string}`[]> {
   try {
     const node = namehash(domain)
     const normalizedAddress = getAddress(address)
     
+    // Load PublicResolver ABI dynamically
+    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    if (!currentTLDConfig) {
+      throw new Error('TLD configuration not found')
+    }
+    
+    const publicResolverABI = await loadContractABI(currentTLDConfig, 'PublicResolver')
+    
     // Encode setAddr function call similar to NestJS - using ABI from PublicResolver
     const encodedSetAddr = encodeFunctionData({
-      abi: PublicResolverABI.abi,
+      abi: publicResolverABI,
       functionName: 'setAddr',
       args: [
         node,
@@ -35,7 +43,7 @@ async function makeData(domain: string, address: string, email?: string): Promis
     if (email) {
       // Encode setText function call similar to NestJS - using ABI from PublicResolver
       const encodedSetText = encodeFunctionData({
-        abi: PublicResolverABI.abi,
+        abi: publicResolverABI,
         functionName: 'setText',
         args: [
           node,
@@ -54,14 +62,35 @@ async function makeData(domain: string, address: string, email?: string): Promis
 }
 
 // Hook to check commitment validity
-export function useCommitmentValidity(commitmentHash: string | null) {
+export function useCommitmentValidity(commitmentHash: string | null, tldConfig?: TLDConfig) {
+  // Get current TLD configuration
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const [abi, setAbi] = useState<any>(null)
+  
+  useEffect(() => {
+    const loadABI = async () => {
+      if (currentTLDConfig) {
+        try {
+          const loadedABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+          setAbi(loadedABI)
+        } catch (error) {
+          console.error('Failed to load ETH registrar controller ABI:', error)
+          setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+        }
+      } else {
+        setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+      }
+    }
+    loadABI()
+  }, [currentTLDConfig])
+  
   const result = useReadContract({
-    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-    abi: ETHRegistrarControllerABI.abi,
+    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'commitments',
     args: commitmentHash ? [commitmentHash] : undefined,
     query: {
-      enabled: !!commitmentHash
+      enabled: !!commitmentHash && !!abi
     }
   })
 
@@ -71,34 +100,82 @@ export function useCommitmentValidity(commitmentHash: string | null) {
   }
 }
 
-export function useCommitmentTiming() {
+export function useCommitmentTiming(tldConfig?: TLDConfig) {
+  // Get current TLD configuration
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const [abi, setAbi] = useState<any>(null)
+  
+  useEffect(() => {
+    const loadABI = async () => {
+      if (currentTLDConfig) {
+        try {
+          const loadedABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+          setAbi(loadedABI)
+        } catch (error) {
+          console.error('Failed to load ETH registrar controller ABI:', error)
+          setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+        }
+      } else {
+        setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+      }
+    }
+    loadABI()
+  }, [currentTLDConfig])
+  
   const minAgeResult = useReadContract({
-    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-    abi: ETHRegistrarControllerABI.abi,
-    functionName: 'minCommitmentAge'
+    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
+    functionName: 'minCommitmentAge',
+    query: {
+      enabled: !!abi
+    }
   })
 
   const maxAgeResult = useReadContract({
-    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-    abi: ETHRegistrarControllerABI.abi,
-    functionName: 'maxCommitmentAge'
+    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
+    functionName: 'maxCommitmentAge',
+    query: {
+      enabled: !!abi
+    }
   })
 
   return {
     minAge: minAgeResult.data ? Number(minAgeResult.data) : 60,
     maxAge: maxAgeResult.data ? Number(maxAgeResult.data) : 86400,
-    isLoading: minAgeResult.isLoading || maxAgeResult.isLoading
+    isLoading: minAgeResult.isLoading || maxAgeResult.isLoading || !abi
   }
 }
 
-export function useDomainAvailability(name: string) {
+export function useDomainAvailability(name: string, tldConfig?: TLDConfig) {
+  // Get current TLD configuration
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const [abi, setAbi] = useState<any>(null)
+  
+  useEffect(() => {
+    const loadABI = async () => {
+      if (currentTLDConfig) {
+        try {
+          const loadedABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+          setAbi(loadedABI)
+        } catch (error) {
+          console.error('Failed to load ETH registrar controller ABI:', error)
+          setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+        }
+      } else {
+        setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+      }
+    }
+    loadABI()
+  }, [currentTLDConfig])
+  
   const result = useReadContract({
-    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-    abi: ETHRegistrarControllerABI.abi,
+    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'available',
     args: name ? [name] : undefined,
     query: {
-      enabled: !!name && name.length > 0
+      enabled: !!name && name.length > 0 && !!abi
     }
   })
 
@@ -128,13 +205,29 @@ export function useUserDomains() {
         const userDomains = await fetchDomainsByOwner(address)
         setDomains(userDomains)
       } catch (graphqlError) {
+        // Check if it's an indexing error
+        const isIndexingError = graphqlError instanceof Error && graphqlError.message === 'INDEXING_ERROR'
+        
+        if (isIndexingError) {
+          console.warn('GraphQL indexing error detected, falling back to blockchain data')
+        }
+        
         // Fallback to blockchain fetch
         try {
           const blockchainDomains = await fetchDomainsFromBlockchain(address)
           setDomains(blockchainDomains)
+          
+          // Show a warning if it was an indexing error
+          if (isIndexingError) {
+            setError('Domain data loaded from blockchain (GraphQL indexer temporarily unavailable)')
+          }
         } catch (blockchainError) {
           setDomains([])
-          setError('Failed to fetch domains')
+          if (isIndexingError) {
+            setError('GraphQL indexer unavailable and blockchain fallback failed. Please try again later.')
+          } else {
+            setError('Failed to fetch domains')
+          }
         }
       }
     } catch (err) {
@@ -156,17 +249,36 @@ export function useUserDomains() {
 }
 
 // Hook to get domain registration price
-export function useRentPrice(name: string, duration: number) {
-
+export function useRentPrice(name: string, duration: number, tldConfig?: TLDConfig) {
+  // Get current TLD configuration
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const [abi, setAbi] = useState<any>(null)
+  
+  useEffect(() => {
+    const loadABI = async () => {
+      if (currentTLDConfig) {
+        try {
+          const loadedABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+          setAbi(loadedABI)
+        } catch (error) {
+          console.error('Failed to load ETH registrar controller ABI:', error)
+          setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+        }
+      } else {
+        setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+      }
+    }
+    loadABI()
+  }, [currentTLDConfig])
   
   const result = useReadContract({
-    address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-    abi: ETH_REGISTRAR_CONTROLLER_ABI,
+    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'rentPrice',
     args: [name, BigInt(duration * 365 * 24 * 60 * 60)], // duration in seconds
     chainId: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!), // Hii Network chain ID
     query: {
-      enabled: !!name && name.length >= 3 && duration > 0,
+      enabled: !!name && name.length >= 3 && duration > 0 && !!abi,
       retry: 3,
       retryDelay: 1000
     }
@@ -178,11 +290,14 @@ export function useRentPrice(name: string, duration: number) {
 }
 
 // Hook to register new domain
-export function useRegisterDomain() {
+export function useRegisterDomain(tldConfig?: TLDConfig) {
   const { address: account, isConnected, status } = useAccount()
   const { data: balance } = useBalance({ address: account })
   const publicClient = usePublicClient()
   const { addToast } = useToast()
+  
+  // Use provided TLD config or default
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
 
   const [isCommitting, setIsCommitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
@@ -233,7 +348,29 @@ export function useRegisterDomain() {
       setIsRegistering(false)
       const errorMessage = registerError?.message || 'Registration failed. Please try again.'
       
-
+      console.log('=== REGISTRATION ERROR DETAILS ===')
+       console.log('Register hash:', registerHash)
+       console.log('Error object:', registerError)
+       console.log('Error message:', errorMessage)
+       console.log('Error cause:', (registerError as any)?.cause)
+       console.log('Error details:', (registerError as any)?.details)
+       console.log('Error data:', (registerError as any)?.data)
+       console.log('Error shortMessage:', (registerError as any)?.shortMessage)
+       console.log('Error metaMessages:', (registerError as any)?.metaMessages)
+       
+       // Check for specific contract errors
+       if (errorMessage.includes('CommitmentTooNew')) {
+         console.log('CONTRACT ERROR: Commitment is too new - wait longer before registering')
+       } else if (errorMessage.includes('CommitmentTooOld')) {
+         console.log('CONTRACT ERROR: Commitment is too old - need to commit again')
+       } else if (errorMessage.includes('NameNotAvailable')) {
+         console.log('CONTRACT ERROR: Domain name is not available for registration')
+       } else if (errorMessage.includes('DurationTooShort')) {
+         console.log('CONTRACT ERROR: Registration duration is too short')
+       } else if (errorMessage.includes('InsufficientValue')) {
+         console.log('CONTRACT ERROR: Insufficient payment value sent')
+       }
+       console.log('==================================')
       
       // Handle specific error types
       let finalErrorMessage = ''
@@ -291,24 +428,60 @@ export function useRegisterDomain() {
     setIsCommitting(true)
     
     try {
-      // Create resolver data
-      const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
+      // Parse the full domain name to extract TLD and domain name
+      const extractedTLD = extractTLD(name)
+      const domainNameOnly = extractDomainName(name)
+      
+      console.log('DEBUG: makeCommitment - original name parameter:', name)
+      console.log('DEBUG: makeCommitment - extracted TLD:', extractedTLD)
+      console.log('DEBUG: makeCommitment - domain name only:', domainNameOnly)
+      
+      // Get the correct TLD config based on extracted TLD
+      const correctTLDConfig = extractedTLD ? getTLDConfig(extractedTLD) : currentTLDConfig
+      
+      if (!correctTLDConfig) {
+        throw new Error(`TLD configuration not found for ${extractedTLD || 'current TLD'}`)
+      }
+      
+      console.log('DEBUG: makeCommitment - correct TLD config:', correctTLDConfig)
+      
+      // Create resolver data using the full domain name
+      const resolverData = await makeData(name, owner, getDefaultEmail(correctTLDConfig.tld), correctTLDConfig)
 
       // Use contract function to create commitment hash (similar to backend)
       if (!publicClient) {
         throw new Error('Public client not available')
       }
 
+      console.log('DEBUG: makeCommitment - full domain for resolver:', name)
+
+      // Load TLD-specific ABI and contract address using correct TLD config
+      const contractABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
+      const contractAddress = getContractAddress(correctTLDConfig, 'ETHRegistrarController')
+
+      console.log('DEBUG: makeCommitment - contractAddress:', contractAddress)
+
+      if (!contractAddress) {
+        throw new Error('Contract address not found for the selected TLD')
+      }
+
+      // Get the correct resolver address for this TLD
+      const correctResolverAddress = getContractAddress(correctTLDConfig, 'PublicResolver')
+      
+      if (!correctResolverAddress) {
+        throw new Error('Public resolver address not found for the selected TLD')
+      }
+
       const commitmentHash = await publicClient.readContract({
-        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-        abi: ETHRegistrarControllerABI.abi,
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
         functionName: 'makeCommitment',
         args: [
-          name,
+          domainNameOnly,
           owner as `0x${string}`,
-          BigInt(60 * 60 * 24 * 30), // 30 days like NestJS
+          BigInt(duration * 365 * 24 * 60 * 60), // Convert years to seconds
           keccak256(encodePacked(['string'], [secret])),
-          HNS_CONTRACTS.PUBLIC_RESOLVER,
+          correctResolverAddress as `0x${string}`,
           resolverData,
           true, // Set reverseRecord to true
           0
@@ -319,12 +492,17 @@ export function useRegisterDomain() {
 
       setCommitmentHash(commitmentHash as string)
       
+      // Use the same contract address that was used for makeCommitment
+      if (!contractAddress) {
+        throw new Error('Contract address not found for commit transaction')
+      }
+      
       // Send commitment transaction
       writeCommit({
-        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-        abi: ETHRegistrarControllerABI.abi,
-        functionName: 'commit',
-        args: [commitmentHash],
+           address: contractAddress as `0x${string}`,
+           abi: contractABI,
+           functionName: 'commit',
+           args: [commitmentHash as `0x${string}`],
         gas: BigInt(50000),
         account: account as `0x${string}`
       })
@@ -346,7 +524,7 @@ export function useRegisterDomain() {
     price: bigint,
     skipBalanceCheck: boolean = false
   ) => {
-    if (!commitmentHash) {
+     if (!commitmentHash) {
       setError('No commitment found. Please commit first.')
       return
     }
@@ -383,28 +561,54 @@ export function useRegisterDomain() {
     try {
       const secretHash = keccak256(encodePacked(['string'], [secret]))
       
+      // Parse the full domain name to extract TLD and domain name
+      const extractedTLD = extractTLD(name)
+      const domainNameOnly = extractDomainName(name)
+      
+      console.log('DEBUG: registerDomain - original name parameter:', name)
+      console.log('DEBUG: registerDomain - extracted TLD:', extractedTLD)
+      console.log('DEBUG: registerDomain - domain name only:', domainNameOnly)
+      
+      // Get the correct TLD config based on extracted TLD
+      const correctTLDConfig = extractedTLD ? getTLDConfig(extractedTLD) : currentTLDConfig
+      
+      if (!correctTLDConfig) {
+        throw new Error(`TLD configuration not found for ${extractedTLD || 'current TLD'}`)
+      }
+      
+      console.log('DEBUG: registerDomain - correct TLD config:', correctTLDConfig)
+      
       // Check commitment age before register
       if (publicClient && commitmentHash) {
         try {
 
+          // Load TLD-specific ABI and contract address using correct TLD config
+          const registrarABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
+          const registrarAddress = getContractAddress(correctTLDConfig, 'ETHRegistrarController')
+
+          if (!registrarAddress) {
+            throw new Error('Contract address not found for the selected TLD')
+          }
           
           const commitmentTimestamp = await publicClient.readContract({
-            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-            abi: ETH_REGISTRAR_CONTROLLER_ABI,
+            address: registrarAddress as `0x${string}`,
+            abi: registrarABI,
             functionName: 'commitments',
             args: [commitmentHash as `0x${string}`]
-          })
-          
-          const minCommitmentAge = await publicClient.readContract({
-            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-            abi: ETHRegistrarControllerABI.abi,
-            functionName: 'minCommitmentAge'
           }) as bigint
           
+          const minCommitmentAge = await publicClient.readContract({
+            address: registrarAddress as `0x${string}`,
+            abi: registrarABI,
+            functionName: 'minCommitmentAge',
+            args: []
+          }) as bigint
+
           const maxCommitmentAge = await publicClient.readContract({
-            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-            abi: ETHRegistrarControllerABI.abi,
-            functionName: 'maxCommitmentAge'
+            address: registrarAddress as `0x${string}`,
+            abi: registrarABI,
+            functionName: 'maxCommitmentAge',
+            args: []
           }) as bigint
           
           const currentTime = BigInt(Math.floor(Date.now() / 1000))
@@ -450,21 +654,28 @@ export function useRegisterDomain() {
       let finalGasLimit = BigInt(500000) // Default gas limit
       
       try {
-        // Create resolver data similar to NestJS
-        const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
+        // Create resolver data using the full domain name
+        const resolverData = await makeData(name, owner, getDefaultEmail(correctTLDConfig.tld), correctTLDConfig)
 
         // Try to estimate gas for register transaction
         if (publicClient) {
+          // Load TLD-specific ABI and contract address for gas estimation using correct TLD config
+          const gasEstimationABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
+          const gasEstimationAddress = getContractAddress(correctTLDConfig, 'ETHRegistrarController')
+          
+          // Get the correct resolver address for this TLD
+          const correctResolverAddress = getContractAddress(correctTLDConfig, 'PublicResolver')
+          
           const estimatedGas = await publicClient.estimateContractGas({
-            address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-            abi: ETHRegistrarControllerABI.abi,
+            address: gasEstimationAddress as `0x${string}`,
+            abi: gasEstimationABI,
             functionName: 'register',
             args: [
-              name,
+              domainNameOnly,
               owner as `0x${string}`,
               BigInt(60 * 60 * 24 * 30), // 30 days like NestJS
               secretHash,
-              HNS_CONTRACTS.PUBLIC_RESOLVER,
+              correctResolverAddress as `0x${string}`,
               resolverData,
               true, // Set reverseRecord to true
               0
@@ -511,44 +722,49 @@ export function useRegisterDomain() {
       //   console.log('============================')
       // }
       
-      // console.log('=== CALLING WRITE REGISTER ===')
-      // console.log('Contract address:', ENS_CONTRACTS.ETH_REGISTRAR_CONTROLLER)
-      // console.log('Function name: register')
-      // console.log('Value:', price.toString())
-      // console.log('Gas:', finalGasLimit.toString())
-      // console.log('Account parameter:', account)
-      // console.log('Owner parameter:', owner)
-      // console.log('Args:', [
-      //   name,
-      //   owner as `0x${string}`,
-      //   BigInt(duration * 365 * 24 * 60 * 60),
-      //   secretHash,
-      //   ENS_CONTRACTS.PUBLIC_RESOLVER,
-      //   [],
-      //   false,
-      //   0,
-      //   BigInt(0)
-      // ])
-      // console.log('Current timestamp:', new Date().toISOString())
-      // console.log('Commitment age:', commitmentHash ? 'Available' : 'Not available')
-      // console.log('=============================')
-      
       try {
-        // Create resolver data similar to NestJS
-        const resolverData = await makeData(`${name}.hii`, owner, 'owner@example.com')
+        // Create resolver data using the full domain name
+        const resolverData = await makeData(name, owner, getDefaultEmail(correctTLDConfig.tld), correctTLDConfig)
 
-
-
+        // Load TLD-specific ABI and contract address for registration using correct TLD config
+        const registerABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
+        const registerAddress = getContractAddress(correctTLDConfig, 'ETHRegistrarController')
+        
+        console.log('=== CALLING WRITE REGISTER ===')
+        console.log('Register address:', registerAddress)
+        console.log('Function name: register')
+        console.log('Value:', price.toString())
+        console.log('Gas:', finalGasLimit.toString())
+        console.log('Account parameter:', account)
+        console.log('Owner parameter:', owner)
+        console.log('Domain name only:', domainNameOnly)
+        console.log('Duration (seconds):', BigInt(duration * 365 * 24 * 60 * 60).toString())
+        console.log('Secret hash:', secretHash)
+        console.log('Current timestamp:', new Date().toISOString())
+        console.log('Commitment age:', commitmentHash ? 'Available' : 'Not available')
+        console.log('===============================')
+        
+        if (!registerAddress) {
+          throw new Error('Contract address not found for the selected TLD')
+        }
+        
+        // Get the correct resolver address for this TLD
+        const correctResolverAddress = getContractAddress(correctTLDConfig, 'PublicResolver')
+        
+        if (!correctResolverAddress) {
+          throw new Error('Public resolver address not found for the selected TLD')
+        }
+        
         writeRegister({
-          address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-          abi: ETHRegistrarControllerABI.abi,
-          functionName: 'register',
+            address: registerAddress as `0x${string}`,
+            abi: registerABI,
+            functionName: 'register',
           args: [
-            name,
+            domainNameOnly,
             owner as `0x${string}`,
-            BigInt(60 * 60 * 24 * 30), // 30 days like NestJS
+            BigInt(duration * 365 * 24 * 60 * 60), // Convert years to seconds
             secretHash,
-            HNS_CONTRACTS.PUBLIC_RESOLVER,
+            correctResolverAddress as `0x${string}`,
             resolverData as readonly `0x${string}`[],
             true, // Set reverseRecord to true
             0
@@ -583,9 +799,30 @@ export function useRegisterDomain() {
 }
 
 // Hook to renew domain
-export function useRenewDomain() {
+export function useRenewDomain(tldConfig?: TLDConfig) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [abi, setAbi] = useState<any>(null)
+
+  // Get current TLD configuration
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+
+  useEffect(() => {
+    const loadABI = async () => {
+      if (currentTLDConfig) {
+        try {
+          const loadedABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+          setAbi(loadedABI)
+        } catch (error) {
+          console.error('Failed to load ETH registrar controller ABI:', error)
+          setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+        }
+      } else {
+        setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+      }
+    }
+    loadABI()
+  }, [currentTLDConfig])
   
   const { writeContract, data: hash } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -607,8 +844,8 @@ export function useRenewDomain() {
     
     try {
       writeContract({
-        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-        abi: ETH_REGISTRAR_CONTROLLER_ABI,
+        address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+        abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'renew',
         args: [name, BigInt(duration * 365 * 24 * 60 * 60)],
         value: price
@@ -629,9 +866,30 @@ export function useRenewDomain() {
 }
 
 // Hook to transfer domain ownership
-export function useTransferDomain() {
+export function useTransferDomain(tldConfig?: TLDConfig) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [abi, setAbi] = useState<any>(null)
+  
+  // Get current TLD configuration
+  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  
+  useEffect(() => {
+    const loadABI = async () => {
+      if (currentTLDConfig) {
+        try {
+          const loadedABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+          setAbi(loadedABI)
+        } catch (error) {
+          console.error('Failed to load ETH registrar controller ABI:', error)
+          setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+        }
+      } else {
+        setAbi(ETH_REGISTRAR_CONTROLLER_ABI)
+      }
+    }
+    loadABI()
+  }, [currentTLDConfig])
   
   const { address } = useAccount()
   const { writeContract, data: hash, reset: resetTransaction } = useWriteContract()
@@ -652,8 +910,8 @@ export function useTransferDomain() {
     setLoading(true)
     
     try {
-      // Calculate node hash for domain
-      const node = namehash(`${domainName}.hii`)
+      // Calculate node hash for domain using the selected TLD
+      const node = namehash(`${domainName}${currentTLDConfig?.tld || '.hii'}`)
       
       // Check if domain is wrapped in NameWrapper
       const publicClient = createPublicClient({
@@ -804,10 +1062,9 @@ export function useTransferDomain() {
 // Function to fetch domains directly from blockchain
 async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[]> {
   try {
-
-    
     // Import viem modules
     const { createPublicClient, http } = await import('viem')
+    const { getSupportedTLDs } = await import('@/config/tlds')
     
     // Create public client to read from blockchain
     const publicClient = createPublicClient({
@@ -825,91 +1082,97 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
     })
 
     const domains: Domain[] = []
+    const supportedTLDs = getSupportedTLDs()
     
-    // Get NameRegistered events from ETHRegistrarController
+    // Get NameRegistered events from all TLD registrar controllers
     const currentBlock = await publicClient.getBlockNumber()
     const fromBlock = currentBlock - BigInt(10000) // Get latest 10000 blocks
     
-
-    
-    const filter = {
-      address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER,
-      topics: [
-        keccak256(encodePacked(['string'], ['NameRegistered(string,bytes32,uint256)']))
-      ],
-      fromBlock,
-      toBlock: currentBlock
-    }
-    
-    const logs = await publicClient.getLogs(filter)
-
-    
-    // Process each event
-    for (const log of logs) {
+    // Process each supported TLD
+    for (const tld of supportedTLDs) {
       try {
-        // Decode event data
-        const { decodeEventLog } = await import('viem')
-        const decoded = decodeEventLog({
-          abi: ETHRegistrarControllerABI.abi,
-          data: log.data,
-          topics: log.topics
-        })
+        const tldConfig = getTLDConfig(tld)
+        if (!tldConfig) continue
         
-        if (decoded.eventName === 'NameRegistered') {
-          const { name, labelHash, expires } = decoded.args as any
-          
-          // Create domain node
-          const domainName = `${name}.hii`
-          const node = namehash(domainName)
-          
-          // Check current owner
-          const currentOwner = await publicClient.readContract({
-            address: HNS_CONTRACTS.REGISTRY,
-        abi: HNS_REGISTRY_ABI,
-            functionName: 'owner',
-            args: [node]
-          })
-          
-          // Only get domains belonging to this owner
-
-          
-          if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
-            // Use default values for resolver and TTL
-            const resolverAddress = '0x0000000000000000000000000000000000000000'
-            const ttl = BigInt(0)
+        const registrarAddress = getContractAddress(tldConfig, 'ETHRegistrarController')
+        if (!registrarAddress) continue
+        
+        const filter = {
+          address: registrarAddress as `0x${string}`,
+          topics: [
+            keccak256(encodePacked(['string'], ['NameRegistered(string,bytes32,uint256)']))
+          ],
+          fromBlock,
+          toBlock: currentBlock
+        }
+        
+        const logs = await publicClient.getLogs(filter)
+        
+        // Process each event for this TLD
+        for (const log of logs) {
+          try {
+            // Decode event data
+            const { decodeEventLog } = await import('viem')
+            const registrarABI = await loadContractABI(tldConfig, 'ETHRegistrarController')
+            const decoded = decodeEventLog({
+              abi: registrarABI,
+              data: log.data,
+              topics: log.topics
+            }) as any
             
-            const domain: Domain = {
-              id: node,
-              name: domainName,
-              labelName: name,
-              labelhash: labelHash,
-              owner: {
-                id: currentOwner
-              },
-              resolver: resolverAddress !== '0x0000000000000000000000000000000000000000' ? {
-                id: resolverAddress
-              } : undefined,
-              ttl: ttl.toString(),
-              isMigrated: true,
-              createdAt: new Date(Number(expires) * 1000).toISOString(),
-              expiryDate: new Date(Number(expires) * 1000).toISOString()
+            if (decoded.eventName === 'NameRegistered') {
+              const { name, labelHash, expires } = decoded.args as any
+              
+              // Create domain node with correct TLD
+              const domainName = `${name}${tld}`
+              const node = namehash(domainName)
+              
+              // Check current owner
+              const currentOwner = await publicClient.readContract({
+                address: HNS_CONTRACTS.REGISTRY,
+                abi: HNS_REGISTRY_ABI,
+                functionName: 'owner',
+                args: [node]
+              })
+              
+              // Only get domains belonging to this owner
+              if (currentOwner.toLowerCase() === ownerAddress.toLowerCase()) {
+                // Use default values for resolver and TTL
+                const resolverAddress = '0x0000000000000000000000000000000000000000'
+                const ttl = BigInt(0)
+                
+                const domain: Domain = {
+                  id: node,
+                  name: domainName,
+                  labelName: name,
+                  labelhash: labelHash,
+                  owner: {
+                    id: currentOwner
+                  },
+                  resolver: resolverAddress !== '0x0000000000000000000000000000000000000000' ? {
+                    id: resolverAddress
+                  } : undefined,
+                  ttl: ttl.toString(),
+                  isMigrated: true,
+                  createdAt: new Date(Number(expires) * 1000).toISOString(),
+                  expiryDate: new Date(Number(expires) * 1000).toISOString()
+                }
+                
+                domains.push(domain)
+              }
             }
-            
-            domains.push(domain)
-
+          } catch (error) {
+            continue
           }
         }
       } catch (error) {
-
         continue
       }
     }
     
-
     return domains
     
   } catch (error) {
-
     return []
   }
 }

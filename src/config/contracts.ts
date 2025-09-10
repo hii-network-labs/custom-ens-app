@@ -6,7 +6,8 @@ export const HNS_CONTRACTS = {
   DNS_REGISTRAR: process.env.NEXT_PUBLIC_CONTRACT_DNS_REGISTRAR as `0x${string}`,
   DNSSEC_IMPL: process.env.NEXT_PUBLIC_CONTRACT_DNSSEC_IMPL as `0x${string}`,
   ETH_REGISTRAR_CONTROLLER: process.env.NEXT_PUBLIC_CONTRACT_ETH_REGISTRAR_CONTROLLER as `0x${string}`,
-  NAME_WRAPPER: process.env.NEXT_PUBLIC_CONTRACT_NAME_WRAPPER as `0x${string}`,
+  // Use HII-specific NAME_WRAPPER address, fallback to generic if not available
+  NAME_WRAPPER: (process.env.NEXT_PUBLIC_CONTRACT_HII_NAME_WRAPPER || process.env.NEXT_PUBLIC_CONTRACT_NAME_WRAPPER) as `0x${string}`,
   PUBLIC_RESOLVER: process.env.NEXT_PUBLIC_CONTRACT_PUBLIC_RESOLVER as `0x${string}`,
   REGISTRY: process.env.NEXT_PUBLIC_CONTRACT_REGISTRY as `0x${string}`,
   REVERSE_REGISTRAR: process.env.NEXT_PUBLIC_CONTRACT_REVERSE_REGISTRAR as `0x${string}`,

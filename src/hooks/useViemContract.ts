@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPublicClient, createWalletClient, custom, http, formatEther, defineChain, keccak256, encodePacked } from 'viem'
 import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI } from '@/config/contracts'
+import { TLDConfig, getTLDConfig, getDefaultTLD } from '../config/tlds'
+import { loadContractABI, getContractAddress } from '@/utils/contractLoader'
 
 // Define Hii Network chain
 const hiiNetwork = defineChain({
@@ -29,29 +31,35 @@ const hiiNetwork = defineChain({
 });
 
 // Hook to call rentPrice using viem directly
-export function useViemRentPrice(name: string | null, duration: number | null = 1) {
+export function useViemRentPrice(name: string | null, duration: number | null = 1, tldConfig?: TLDConfig) {
   const [data, setData] = useState<{base: bigint, premium: bigint} | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
 
   const fetchRentPrice = useCallback(async () => {
-
+    // Use provided TLD config or default
+    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
     
-    if (!name || !duration || name.length < 3) {
-
+    if (!name || !duration || name.length < 3 || !currentTLDConfig) {
       setData(null)
       setError(null)
       setIsSuccess(false)
       return
     }
 
-
     setIsLoading(true)
     setError(null)
     setIsSuccess(false)
 
     try {
+      // Load TLD-specific ABI and contract address
+      const contractABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+      const contractAddress = getContractAddress(currentTLDConfig, 'ETHRegistrarController')
+
+      if (!contractAddress) {
+        throw new Error(`No registrar controller address found for TLD ${currentTLDConfig.tld}`)
+      }
 
       const client = createPublicClient({
         chain: hiiNetwork,
@@ -62,32 +70,48 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
         })
       })
 
-
       const result = await client.readContract({
-        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
-        abi: ETH_REGISTRAR_CONTROLLER_ABI,
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
         functionName: 'rentPrice',
         args: [name!, BigInt(duration! * 365 * 24 * 60 * 60)] // duration in seconds
       })
 
-
       const priceData = result as { base: bigint, premium: bigint }
-      setData(priceData)
+      
+      // Apply scaling correction for .hi TLD (contract returns prices 1,000,000x too high)
+      let correctedPriceData = priceData
+      // if (currentTLDConfig.tld === '.hi') {
+      //   correctedPriceData = {
+      //     base: priceData.base / BigInt(1000000),
+      //     premium: priceData.premium / BigInt(1000000)
+      //   }
+      //   console.log('Applied .hi TLD price correction:', {
+      //     original: { base: priceData.base.toString(), premium: priceData.premium.toString() },
+      //     corrected: { base: correctedPriceData.base.toString(), premium: correctedPriceData.premium.toString() }
+      //   })
+      // }
+      
+      setData(correctedPriceData)
       setIsSuccess(true)
       setError(null)
 
     } catch (err: any) {
-
+      console.error('Rent price fetch failed:', {
+        name,
+        duration,
+        tldConfig: currentTLDConfig,
+        error: err
+      })
       setError(err.message || 'Failed to fetch rent price')
       setData(null)
       setIsSuccess(false)
     } finally {
       setIsLoading(false)
     }
-  }, [name, duration])
+  }, [name, duration, tldConfig])
 
   useEffect(() => {
-
     if (name && duration && name.length >= 3) {
       fetchRentPrice()
     }
@@ -104,15 +128,30 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
 }
 
 // Hook to check domain availability using viem directly
-export function useViemAvailability(name: string) {
-  const [data, setData] = useState<boolean | null>(null)
+// Enhanced domain status types
+export type DomainStatus = {
+  available: boolean
+  registered: boolean
+  expired: boolean
+  inGracePeriod: boolean
+  owner?: string
+  expiryDate?: Date
+  statusText: string
+}
+
+export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
+  const [data, setData] = useState<DomainStatus | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
 
-  const fetchAvailability = useCallback(async () => {
-    if (!name || name.length < 3) {
+  const fetchDomainStatus = useCallback(async () => {
+    // Use provided TLD config or default
+    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    
+    if (!name || name.trim() === '' || name.length < 3 || !currentTLDConfig) {
       setData(null)
+      setIsLoading(false)
       setError(null)
       setIsSuccess(false)
       return
@@ -123,6 +162,17 @@ export function useViemAvailability(name: string) {
     setIsSuccess(false)
 
     try {
+      // Load TLD-specific ABI and contract address
+      const registrarABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+      const registrarAddress = getContractAddress(currentTLDConfig, 'ETHRegistrarController')
+      
+      // Also load BaseRegistrarImplementation for ownership and expiry info
+      const baseRegistrarABI = await loadContractABI(currentTLDConfig, 'BaseRegistrarImplementation')
+      const baseRegistrarAddress = getContractAddress(currentTLDConfig, 'BaseRegistrarImplementation')
+
+      if (!registrarAddress) {
+        throw new Error(`No registrar controller address found for TLD ${currentTLDConfig.tld}`)
+      }
 
       const client = createPublicClient({
         chain: hiiNetwork,
@@ -133,74 +183,170 @@ export function useViemAvailability(name: string) {
         })
       })
 
-
-      const result = await client.readContract({
-        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
-        abi: ETH_REGISTRAR_CONTROLLER_ABI,
+      // Check if domain is available
+      const isAvailable = await client.readContract({
+        address: registrarAddress as `0x${string}`,
+        abi: registrarABI,
         functionName: 'available',
         args: [name]
-      })
+      }) as boolean
 
+      let domainStatus: DomainStatus = {
+        available: isAvailable,
+        registered: !isAvailable,
+        expired: false,
+        inGracePeriod: false,
+        statusText: isAvailable ? 'Available' : 'Registered'
+      }
 
-      setData(result as boolean)
+      // If not available, get more detailed information
+      if (!isAvailable && baseRegistrarAddress && baseRegistrarABI) {
+        try {
+          // Generate domain hash for base registrar calls
+          const domainHash = keccak256(encodePacked(['string'], [name]))
+          
+          // Check ownership
+          const owner = await client.readContract({
+            address: baseRegistrarAddress as `0x${string}`,
+            abi: baseRegistrarABI,
+            functionName: 'ownerOf',
+            args: [domainHash]
+          }) as string
+
+          // Check expiry date
+          const expiryTimestamp = await client.readContract({
+            address: baseRegistrarAddress as `0x${string}`,
+            abi: baseRegistrarABI,
+            functionName: 'nameExpires',
+            args: [domainHash]
+          }) as bigint
+
+          const expiryDate = new Date(Number(expiryTimestamp) * 1000)
+          const now = new Date()
+          const gracePeriodEnd = new Date(expiryDate.getTime() + (90 * 24 * 60 * 60 * 1000)) // 90 days grace period
+
+          const isExpired = now > expiryDate
+          const isInGracePeriod = isExpired && now <= gracePeriodEnd
+
+          domainStatus = {
+            available: false,
+            registered: true,
+            expired: isExpired,
+            inGracePeriod: isInGracePeriod,
+            owner,
+            expiryDate,
+            statusText: isInGracePeriod ? 'In Grace Period' : isExpired ? 'Expired' : 'Registered'
+          }
+        } catch (detailError) {
+          // If we can't get detailed info, just mark as registered
+          console.warn('Could not fetch detailed domain info:', detailError)
+          domainStatus.statusText = 'Registered'
+        }
+      }
+
+      setData(domainStatus)
       setIsSuccess(true)
       setError(null)
 
     } catch (err: any) {
-
-      setError(err.message || 'Failed to check availability')
+      console.error('Domain status check failed:', {
+        name,
+        tldConfig: currentTLDConfig,
+        registrarAddress: getContractAddress(currentTLDConfig, 'ETHRegistrarController'),
+        error: err,
+        errorMessage: err?.message,
+        errorCode: err?.code,
+        errorData: err?.data,
+        errorStack: err?.stack
+      })
+      setError(err.message || err.toString() || 'Failed to check domain status')
       setData(null)
       setIsSuccess(false)
     } finally {
       setIsLoading(false)
     }
-  }, [name])
+  }, [name, tldConfig])
 
   useEffect(() => {
-    fetchAvailability()
-  }, [fetchAvailability])
+    fetchDomainStatus()
+  }, [fetchDomainStatus])
 
   return {
     data,
     isLoading,
     error,
     isSuccess,
-    refetch: fetchAvailability
+    refetch: fetchDomainStatus
   }
 }
 
-// Hook to get wallet address from MetaMask replacing wagmi useAccount
+// Keep the original hook for backward compatibility
+export function useViemAvailability(name: string, tldConfig?: TLDConfig) {
+  const { data, isLoading, error } = useViemDomainStatus(name, tldConfig)
+  return {
+    data: data?.available ?? null,
+    isLoading,
+    error
+  }
+}
+
+// Hook to get account information using viem
 export function useViemAccount() {
-  const [address, setAddress] = useState<string | null>(null)
+  const [account, setAccount] = useState<string | null>(null)
   const [isConnected, setIsConnected] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const connectWallet = useCallback(async () => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      setError('MetaMask is not installed')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      // Request account access
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      })
+
+      if (accounts && accounts.length > 0) {
+        setAccount(accounts[0])
+        setIsConnected(true)
+      } else {
+        setError('No accounts found')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to connect wallet')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const disconnect = useCallback(() => {
+    setAccount(null)
+    setIsConnected(false)
+    setError(null)
+  }, [])
 
   const checkConnection = useCallback(async () => {
     if (typeof window === 'undefined' || !window.ethereum) {
-      setError('MetaMask not installed')
-      setIsLoading(false)
       return
     }
 
     try {
-      const accounts = await window.ethereum.request({ method: 'eth_accounts' })
-      if (accounts && accounts.length > 0) {
-        setAddress(accounts[0])
-        setIsConnected(true)
-        setError(null)
-      } else {
-        setAddress(null)
-        setIsConnected(false)
-        setError(null)
-      }
-    } catch (err: any) {
+      const accounts = await window.ethereum.request({
+        method: 'eth_accounts',
+      })
 
-      setError(err.message || 'Failed to check wallet connection')
-      setAddress(null)
-      setIsConnected(false)
-    } finally {
-      setIsLoading(false)
+      if (accounts && accounts.length > 0) {
+        setAccount(accounts[0])
+        setIsConnected(true)
+      }
+    } catch (err) {
+      console.warn('Failed to check wallet connection:', err)
     }
   }, [])
 
@@ -208,151 +354,143 @@ export function useViemAccount() {
     checkConnection()
 
     // Listen for account changes
-    if (window.ethereum) {
+    if (typeof window !== 'undefined' && window.ethereum) {
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length > 0) {
-          setAddress(accounts[0])
+          setAccount(accounts[0])
           setIsConnected(true)
-          setError(null)
         } else {
-          setAddress(null)
+          setAccount(null)
           setIsConnected(false)
-          setError(null)
         }
       }
 
       window.ethereum.on('accountsChanged', handleAccountsChanged)
+
       return () => {
         window.ethereum.removeListener('accountsChanged', handleAccountsChanged)
       }
     }
   }, [])
 
-  const connect = useCallback(async () => {
-    if (!window.ethereum) {
-      setError('MetaMask not installed')
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' })
-      if (accounts && accounts.length > 0) {
-        setAddress(accounts[0])
-        setIsConnected(true)
-        setError(null)
-      }
-    } catch (err: any) {
-
-      setError(err.message || 'Failed to connect wallet')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
   return {
-    address,
+    account,
     isConnected,
     isLoading,
     error,
-    connect,
-    refetch: checkConnection
+    connect: connectWallet,
+    disconnect
   }
 }
 
-// Hook to replace wagmi useWriteContract
+// Hook for writing to contracts using viem
 export function useViemWriteContract() {
-  const [data, setData] = useState<string | null>(null) // transaction hash
-  const [isPending, setIsPending] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [txHash, setTxHash] = useState<string | null>(null)
+  const [isSuccess, setIsSuccess] = useState(false)
 
-  const writeContract = useCallback(async (params: {
+  const writeContract = useCallback(async ({
+    address,
+    abi,
+    functionName,
+    args,
+    value
+  }: {
     address: string
     abi: any[]
     functionName: string
     args?: any[]
     value?: bigint
   }) => {
-    if (!window.ethereum) {
-      setError('MetaMask not installed')
+    if (typeof window === 'undefined' || !window.ethereum) {
+      setError('MetaMask is not installed')
       return
     }
 
-    try {
-      setIsPending(true)
-      setError(null)
+    setIsLoading(true)
+    setError(null)
+    setTxHash(null)
+    setIsSuccess(false)
 
+    try {
       const walletClient = createWalletClient({
         chain: hiiNetwork,
         transport: custom(window.ethereum)
       })
 
       const [account] = await walletClient.getAddresses()
-      
       if (!account) {
         throw new Error('No account connected')
       }
 
       const hash = await walletClient.writeContract({
-        address: params.address as `0x${string}`,
-        abi: params.abi,
-        functionName: params.functionName,
-        args: params.args || [],
-        value: params.value,
-        account
+        address: address as `0x${string}`,
+        abi,
+        functionName,
+        args: args || [],
+        account,
+        value: value || BigInt(0)
       })
 
-      setData(hash)
+      setTxHash(hash)
+      setIsSuccess(true)
       return hash
     } catch (err: any) {
       setError(err.message || 'Transaction failed')
       throw err
     } finally {
-      setIsPending(false)
+      setIsLoading(false)
     }
+  }, [])
+
+  const reset = useCallback(() => {
+    setIsLoading(false)
+    setError(null)
+    setTxHash(null)
+    setIsSuccess(false)
   }, [])
 
   return {
     writeContract,
-    data,
-    isPending,
-    error
+    isLoading,
+    error,
+    txHash,
+    isSuccess,
+    reset
   }
 }
 
-// Hook to replace wagmi useWaitForTransactionReceipt
+// Hook to wait for transaction receipt
 export function useViemWaitForTransactionReceipt(hash: string | null) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [receipt, setReceipt] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isSuccess, setIsSuccess] = useState(false)
 
   useEffect(() => {
     if (!hash) {
-      setIsLoading(false)
-      setIsSuccess(false)
-      setError(null)
       setReceipt(null)
+      setIsLoading(false)
+      setError(null)
+      setIsSuccess(false)
       return
     }
 
     const waitForReceipt = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
+      setIsLoading(true)
+      setError(null)
+      setIsSuccess(false)
 
+      try {
         const client = createPublicClient({
           chain: hiiNetwork,
-          transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!, {
-            timeout: 30000,
-            retryCount: 3,
-            retryDelay: 1000,
-          })
+          transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!)
         })
 
         const receipt = await client.waitForTransactionReceipt({
           hash: hash as `0x${string}`,
-          timeout: 60000 // 60 seconds
+          timeout: 60000 // 60 seconds timeout
         })
 
         setReceipt(receipt)
@@ -362,7 +500,6 @@ export function useViemWaitForTransactionReceipt(hash: string | null) {
         }
       } catch (err: any) {
         setError(err.message || 'Failed to get transaction receipt')
-        setIsSuccess(false)
       } finally {
         setIsLoading(false)
       }
@@ -372,14 +509,14 @@ export function useViemWaitForTransactionReceipt(hash: string | null) {
   }, [hash])
 
   return {
+    receipt,
     isLoading,
-    isSuccess,
     error,
-    receipt
+    isSuccess
   }
 }
 
-// Hook to create commitment hash using viem directly
+// Hook to make commitment for domain registration
 export function useViemMakeCommitment(
   name: string | null,
   owner: string | null,
@@ -388,18 +525,19 @@ export function useViemMakeCommitment(
   resolver: string | null,
   dataArray: any[] | null,
   reverseRecord: boolean | null,
-  ownerControlledFuses: number | null
+  ownerControlledFuses: number | null,
+  tldConfig?: TLDConfig
 ) {
-  const [commitmentData, setCommitmentData] = useState<string | null>(null)
+  const [commitment, setCommitment] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSuccess, setIsSuccess] = useState(false)
 
-  const fetchCommitment = useCallback(async () => {
-    if (!name || !owner || !duration || !secret || !resolver || dataArray === null || reverseRecord === null || ownerControlledFuses === null) {
-      setCommitmentData(null)
-      setError(null)
-      setIsSuccess(false)
+  const makeCommitment = useCallback(async () => {
+    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    
+    if (!name || !owner || !duration || !secret || !resolver || !currentTLDConfig) {
+      setError('Missing required parameters for commitment')
       return
     }
 
@@ -408,53 +546,54 @@ export function useViemMakeCommitment(
     setIsSuccess(false)
 
     try {
+      const contractABI = await loadContractABI(currentTLDConfig, 'ETHRegistrarController')
+      const contractAddress = getContractAddress(currentTLDConfig, 'ETHRegistrarController')
+
+      if (!contractAddress) {
+        throw new Error(`No registrar controller address found for TLD ${currentTLDConfig.tld}`)
+      }
+
       const client = createPublicClient({
         chain: hiiNetwork,
-        transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!, {
-          timeout: 30000,
-          retryCount: 3,
-          retryDelay: 1000,
-        })
+        transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!)
       })
 
-      const result = await client.readContract({
-        address: HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER as `0x${string}`,
-        abi: ETH_REGISTRAR_CONTROLLER_ABI,
+      const commitmentHash = await client.readContract({
+        address: contractAddress as `0x${string}`,
+        abi: contractABI,
         functionName: 'makeCommitment',
         args: [
           name,
-          owner as `0x${string}`,
-          BigInt(duration * 365 * 24 * 60 * 60),
-          secret as `0x${string}`,
-          resolver as `0x${string}`,
-          dataArray,
-          reverseRecord,
-          ownerControlledFuses
+          owner,
+          BigInt(duration * 365 * 24 * 60 * 60), // duration in seconds
+          secret,
+          resolver,
+          dataArray || [],
+          reverseRecord || false,
+          BigInt(ownerControlledFuses || 0)
         ]
-      })
+      }) as string
 
-      setCommitmentData(result as string)
+      setCommitment(commitmentHash)
       setIsSuccess(true)
-      setError(null)
-
     } catch (err: any) {
       setError(err.message || 'Failed to make commitment')
-      setCommitmentData(null)
-      setIsSuccess(false)
     } finally {
       setIsLoading(false)
     }
-  }, [name, owner, duration, secret, resolver, dataArray, reverseRecord, ownerControlledFuses])
+  }, [name, owner, duration, secret, resolver, dataArray, reverseRecord, ownerControlledFuses, tldConfig])
 
   useEffect(() => {
-    fetchCommitment()
-  }, [fetchCommitment])
+    if (name && owner && duration && secret && resolver) {
+      makeCommitment()
+    }
+  }, [makeCommitment])
 
   return {
-    data: commitmentData,
+    commitment,
     isLoading,
     error,
     isSuccess,
-    refetch: fetchCommitment
+    refetch: makeCommitment
   }
 }

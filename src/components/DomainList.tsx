@@ -1,6 +1,6 @@
 'use client'
 
-import { Domain } from '@/lib/graphql'
+import { Domain, getDisplayName } from '@/lib/graphql'
 import LoadingState, { CardSkeleton } from './LoadingState'
 
 interface DomainListProps {
@@ -125,8 +125,11 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
                     </svg>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors truncate">{domain.name}</h3>
+                    <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors truncate">{getDisplayName(domain)}</h3>
                     <p className="text-sm text-gray-500">ENS Domain</p>
+                    {getDisplayName(domain) !== domain.name && (
+                      <p className="text-xs text-gray-400 font-mono truncate" title={domain.name}>Original: {domain.name}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-col space-y-1">

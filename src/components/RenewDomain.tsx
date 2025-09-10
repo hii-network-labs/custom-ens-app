@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { formatEther } from 'viem'
 import { useRentPrice, useRenewDomain } from '@/hooks/useENS'
 import { Domain } from '@/lib/graphql'
+import { extractDomainName } from '@/config/tlds'
 
 interface RenewDomainProps {
   domains: Domain[]
@@ -17,7 +18,7 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
   const [step, setStep] = useState<'form' | 'success'>('form')
   const [successMessage, setSuccessMessage] = useState('')
   
-  const domainName = selectedDomain ? selectedDomain.replace('.hii', '') : ''
+  const domainName = selectedDomain ? extractDomainName(selectedDomain) : ''
   const { data: rentPrice, isLoading: isPriceLoading } = useRentPrice(domainName, duration)
   const { renewDomain, loading, error, hash, isSuccess } = useRenewDomain()
 
@@ -34,8 +35,20 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
     if (!selectedDomain || !rentPrice) return
     
     try {
-      // Calculate total price from rentPrice object
-      const totalPrice = rentPrice.base + rentPrice.premium
+      // rentPrice is a tuple [base, premium] from the contract
+      const priceData = rentPrice as [bigint, bigint]
+      let totalPrice = priceData[0] + priceData[1] // base + premium
+      
+      // Apply scaling correction for .hi TLD (contract returns prices 1,000,000x too high)
+       const tld = selectedDomain.includes('.hi') ? '.hi' : '.hii'
+      //  if (tld === '.hi') {
+      //   totalPrice = totalPrice / BigInt(1000000)
+      //   console.log('Applied .hi TLD price correction for renewal:', {
+      //     original: (priceData[0] + priceData[1]).toString(),
+      //     corrected: totalPrice.toString()
+      //   })
+      // }
+      
       await renewDomain(domainName, duration, totalPrice)
       // Don't reset form here - wait for transaction success
     } catch (err) {
@@ -165,7 +178,7 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
                     {isPriceLoading ? (
                       <span className="animate-pulse">Calculating...</span>
                     ) : rentPrice ? (
-                      `${formatEther(rentPrice.base + rentPrice.premium)} HII`
+                      `${formatEther((rentPrice as [bigint, bigint])[0] + (rentPrice as [bigint, bigint])[1])} HII`
                     ) : (
                       'N/A'
                     )}

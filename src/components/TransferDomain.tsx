@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { isAddress } from 'viem'
 import { useTransferDomain } from '@/hooks/useENS'
 import { Domain } from '@/lib/graphql'
+import { extractDomainName } from '@/config/tlds'
 
 interface TransferDomainProps {
   domains: Domain[]
@@ -20,7 +21,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
   const handleTransfer = async () => {
     if (!selectedDomain || !newOwner || !confirmTransfer) return
     
-    const domainName = selectedDomain.replace('.hii', '')
+    const domainName = extractDomainName(selectedDomain)
     
     try {
       await transferDomain(domainName, newOwner)
