@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPublicClient, createWalletClient, custom, http, formatEther, defineChain, keccak256, encodePacked } from 'viem'
 import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI } from '@/config/contracts'
-import { TLDConfig, getTLDConfig, getDefaultTLD } from '../config/tlds'
+import { TLDConfig, getTLDConfigSync, getDefaultTLDSync } from '../config/tlds'
 import { loadContractABI, getContractAddress } from '@/utils/contractLoader'
 
 // Define Hii Network chain
@@ -39,7 +39,7 @@ export function useViemRentPrice(name: string | null, duration: number | null = 
 
   const fetchRentPrice = useCallback(async () => {
     // Use provided TLD config or default
-    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
     
     if (!name || !duration || name.length < 3 || !currentTLDConfig) {
       setData(null)
@@ -147,7 +147,7 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
 
   const fetchDomainStatus = useCallback(async () => {
     // Use provided TLD config or default
-    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
     
     if (!name || name.trim() === '' || name.length < 3 || !currentTLDConfig) {
       setData(null)
@@ -534,7 +534,7 @@ export function useViemMakeCommitment(
   const [isSuccess, setIsSuccess] = useState(false)
 
   const makeCommitment = useCallback(async () => {
-    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
     
     if (!name || !owner || !duration || !secret || !resolver || !currentTLDConfig) {
       setError('Missing required parameters for commitment')

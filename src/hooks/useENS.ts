@@ -5,7 +5,7 @@ import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFuncti
 import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, HNS_REGISTRY_ABI } from '@/config/contracts'
 import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
 import { useToast } from '@/components/Toast'
-import { TLDConfig, getTLDConfig, getDefaultTLD, getDefaultEmail, extractTLD, extractDomainName } from '../config/tlds'
+import { TLDConfig, getTLDConfigSync, getDefaultTLDSync, getDefaultEmail, extractTLD, extractDomainName } from '../config/tlds'
 import { loadContractABI, getContractAddress } from '@/utils/contractLoader'
 
 // Sleep function similar to NestJS
@@ -20,7 +20,7 @@ async function makeData(domain: string, address: string, email?: string, tldConf
     const normalizedAddress = getAddress(address)
     
     // Load PublicResolver ABI dynamically
-    const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+    const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
     if (!currentTLDConfig) {
       throw new Error('TLD configuration not found')
     }
@@ -64,7 +64,7 @@ async function makeData(domain: string, address: string, email?: string, tldConf
 // Hook to check commitment validity
 export function useCommitmentValidity(commitmentHash: string | null, tldConfig?: TLDConfig) {
   // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
   const [abi, setAbi] = useState<any>(null)
   
   useEffect(() => {
@@ -102,7 +102,7 @@ export function useCommitmentValidity(commitmentHash: string | null, tldConfig?:
 
 export function useCommitmentTiming(tldConfig?: TLDConfig) {
   // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
   const [abi, setAbi] = useState<any>(null)
   
   useEffect(() => {
@@ -149,7 +149,7 @@ export function useCommitmentTiming(tldConfig?: TLDConfig) {
 
 export function useDomainAvailability(name: string, tldConfig?: TLDConfig) {
   // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
   const [abi, setAbi] = useState<any>(null)
   
   useEffect(() => {
@@ -251,7 +251,7 @@ export function useUserDomains() {
 // Hook to get domain registration price
 export function useRentPrice(name: string, duration: number, tldConfig?: TLDConfig) {
   // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
   const [abi, setAbi] = useState<any>(null)
   
   useEffect(() => {
@@ -297,7 +297,7 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
   const { addToast } = useToast()
   
   // Use provided TLD config or default
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
 
   const [isCommitting, setIsCommitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
@@ -429,15 +429,15 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
     
     try {
       // Parse the full domain name to extract TLD and domain name
-      const extractedTLD = extractTLD(name)
-      const domainNameOnly = extractDomainName(name)
+      const extractedTLD = await extractTLD(name)
+      const domainNameOnly = await extractDomainName(name)
       
       console.log('DEBUG: makeCommitment - original name parameter:', name)
       console.log('DEBUG: makeCommitment - extracted TLD:', extractedTLD)
       console.log('DEBUG: makeCommitment - domain name only:', domainNameOnly)
       
       // Get the correct TLD config based on extracted TLD
-      const correctTLDConfig = extractedTLD ? getTLDConfig(extractedTLD) : currentTLDConfig
+      const correctTLDConfig = extractedTLD ? getTLDConfigSync(extractedTLD) : currentTLDConfig
       
       if (!correctTLDConfig) {
         throw new Error(`TLD configuration not found for ${extractedTLD || 'current TLD'}`)
@@ -446,7 +446,8 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
       console.log('DEBUG: makeCommitment - correct TLD config:', correctTLDConfig)
       
       // Create resolver data using the full domain name
-      const resolverData = await makeData(name, owner, getDefaultEmail(correctTLDConfig.tld), correctTLDConfig)
+      const defaultEmail = await getDefaultEmail(correctTLDConfig.tld)
+      const resolverData = await makeData(name, owner, defaultEmail, correctTLDConfig)
 
       // Use contract function to create commitment hash (similar to backend)
       if (!publicClient) {
@@ -477,15 +478,15 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         abi: contractABI,
         functionName: 'makeCommitment',
         args: [
-          domainNameOnly,
-          owner as `0x${string}`,
-          BigInt(duration * 365 * 24 * 60 * 60), // Convert years to seconds
-          keccak256(encodePacked(['string'], [secret])),
-          correctResolverAddress as `0x${string}`,
-          resolverData,
-          true, // Set reverseRecord to true
-          0
-        ]
+              domainNameOnly,
+              owner as `0x${string}`,
+              BigInt(duration * 365 * 24 * 60 * 60), // Convert years to seconds
+              keccak256(encodePacked(['string'], [secret])),
+              correctResolverAddress as `0x${string}`,
+              resolverData,
+              true, // Set reverseRecord to true
+              0
+            ]
       })
       
 
@@ -562,15 +563,15 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
       const secretHash = keccak256(encodePacked(['string'], [secret]))
       
       // Parse the full domain name to extract TLD and domain name
-      const extractedTLD = extractTLD(name)
-      const domainNameOnly = extractDomainName(name)
+        const extractedTLD = await extractTLD(name)
+        const domainNameOnly = await extractDomainName(name)
       
       console.log('DEBUG: registerDomain - original name parameter:', name)
       console.log('DEBUG: registerDomain - extracted TLD:', extractedTLD)
       console.log('DEBUG: registerDomain - domain name only:', domainNameOnly)
       
       // Get the correct TLD config based on extracted TLD
-      const correctTLDConfig = extractedTLD ? getTLDConfig(extractedTLD) : currentTLDConfig
+      const correctTLDConfig = extractedTLD ? getTLDConfigSync(extractedTLD) : currentTLDConfig
       
       if (!correctTLDConfig) {
         throw new Error(`TLD configuration not found for ${extractedTLD || 'current TLD'}`)
@@ -655,7 +656,8 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
       
       try {
         // Create resolver data using the full domain name
-        const resolverData = await makeData(name, owner, getDefaultEmail(correctTLDConfig.tld), correctTLDConfig)
+        const defaultEmail = await getDefaultEmail(correctTLDConfig.tld)
+        const resolverData = await makeData(name, owner, defaultEmail, correctTLDConfig)
 
         // Try to estimate gas for register transaction
         if (publicClient) {
@@ -724,7 +726,8 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
       
       try {
         // Create resolver data using the full domain name
-        const resolverData = await makeData(name, owner, getDefaultEmail(correctTLDConfig.tld), correctTLDConfig)
+        const defaultEmail = await getDefaultEmail(correctTLDConfig.tld)
+        const resolverData = await makeData(name, owner, defaultEmail, correctTLDConfig)
 
         // Load TLD-specific ABI and contract address for registration using correct TLD config
         const registerABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
@@ -765,7 +768,7 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
             BigInt(duration * 365 * 24 * 60 * 60), // Convert years to seconds
             secretHash,
             correctResolverAddress as `0x${string}`,
-            resolverData as readonly `0x${string}`[],
+            resolverData,
             true, // Set reverseRecord to true
             0
           ],
@@ -805,7 +808,7 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
   const [abi, setAbi] = useState<any>(null)
 
   // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
 
   useEffect(() => {
     const loadABI = async () => {
@@ -872,7 +875,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
   const [abi, setAbi] = useState<any>(null)
   
   // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfig(getDefaultTLD())
+  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
   
   useEffect(() => {
     const loadABI = async () => {
@@ -1089,9 +1092,10 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
     const fromBlock = currentBlock - BigInt(10000) // Get latest 10000 blocks
     
     // Process each supported TLD
-    for (const tld of supportedTLDs) {
+    const supportedTLDsArray = await supportedTLDs
+    for (const tld of supportedTLDsArray) {
       try {
-        const tldConfig = getTLDConfig(tld)
+        const tldConfig = getTLDConfigSync(tld)
         if (!tldConfig) continue
         
         const registrarAddress = getContractAddress(tldConfig, 'ETHRegistrarController')

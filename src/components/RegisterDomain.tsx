@@ -6,7 +6,7 @@ import { useAccount } from 'wagmi'
 import { useViemRentPrice, useViemDomainStatus } from '@/hooks/useViemContract'
 import { useRegisterDomain, useCommitmentTiming } from '@/hooks/useENS'
 import LoadingState, { InlineLoader } from './LoadingState'
-import { getAvailableTLDConfigs, getDefaultTLD, getTLDConfig, formatFullDomain, getTLDColorClasses } from '../config/tlds'
+import { getAvailableTLDConfigsSync, getDefaultTLDSync, getTLDConfigSync, formatFullDomain, getTLDColorClasses } from '../config/tlds'
 
 interface RegisterDomainProps {
   onSuccess: () => void
@@ -17,7 +17,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
   const { address, isConnected } = useAccount()
 
   const [domainName, setDomainName] = useState('')
-  const [selectedTLD, setSelectedTLD] = useState(getDefaultTLD())
+  const [selectedTLD, setSelectedTLD] = useState(getDefaultTLDSync())
   const [duration, setDuration] = useState(1)
   const [secret, setSecret] = useState('')
   const [step, setStep] = useState<'form' | 'commit' | 'wait' | 'register' | 'success'>('form')
@@ -25,14 +25,14 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
   const [successMessage, setSuccessMessage] = useState('')
   
   // Get available TLD configurations
-  const availableTLDConfigs = getAvailableTLDConfigs()
+  const availableTLDConfigs = getAvailableTLDConfigsSync()
   const availableTLDs = availableTLDConfigs.map(config => config.tld)
   
   // Get full domain name with selected TLD
   const fullDomainName = formatFullDomain(domainName, selectedTLD)
   
   // Get current TLD configuration
-  const currentTLDConfig = getTLDConfig(selectedTLD)
+  const currentTLDConfig = getTLDConfigSync(selectedTLD)
   
   
   const { data: rentPrice, isLoading: isPriceLoading, formattedPrice } = useViemRentPrice(domainName, duration, currentTLDConfig)
