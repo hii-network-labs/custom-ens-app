@@ -55,7 +55,7 @@ async function fetchCDNTLDData(): Promise<TLDDataResponse> {
   }
   
   try {
-    console.log(`Fetching TLD data from CDN: ${TLD_CDN_URL}`)
+
     const response = await fetch(TLD_CDN_URL, {
       headers: {
         'Accept': 'application/json',
@@ -78,12 +78,12 @@ async function fetchCDNTLDData(): Promise<TLDDataResponse> {
     cdnCache = data
     cacheTimestamp = now
     
-    console.log(`Successfully fetched ${data.tlds.length} TLD configurations from CDN`)
+    
     return data
     
   } catch (error) {
     console.error('Failed to fetch TLD data from CDN:', error)
-    console.log('Falling back to local TLD data')
+      // Falling back to local TLD data
     
     // Fallback to local data if CDN fails
     return fetchLocalTLDData()
@@ -142,7 +142,7 @@ export async function getPrimaryTLDConfig(): Promise<TLDConfigData | undefined> 
 export function clearTLDCache(): void {
   cdnCache = null
   cacheTimestamp = 0
-  console.log('TLD cache cleared')
+
 }
 
 /**

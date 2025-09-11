@@ -6,6 +6,7 @@ import { useAccount } from 'wagmi'
 import { useViemRentPrice, useViemDomainStatus } from '@/hooks/useViemContract'
 import { useRegisterDomain, useCommitmentTiming } from '@/hooks/useENS'
 import LoadingState, { InlineLoader } from './LoadingState'
+import DomainAutocomplete from './DomainAutocomplete'
 import { getAvailableTLDConfigsSync, getDefaultTLDSync, getTLDConfigSync, formatFullDomain, getTLDColorClasses } from '../config/tlds'
 
 interface RegisterDomainProps {
@@ -18,6 +19,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
 
   const [domainName, setDomainName] = useState('')
   const [selectedTLD, setSelectedTLD] = useState(getDefaultTLDSync())
+  const [showTLDSelector, setShowTLDSelector] = useState(false)
   const [duration, setDuration] = useState(1)
   const [secret, setSecret] = useState('')
   const [step, setStep] = useState<'form' | 'commit' | 'wait' | 'register' | 'success'>('form')
@@ -55,7 +57,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
   // Automatically create fixed secret (similar to NestJS)
   useEffect(() => {
     if (!secret) {
-      console.log('secret not found')
+
       // Use fixed secret similar to NestJS to ensure consistency
       setSecret('fixed-secret-for-ens-registration')
     }
@@ -86,10 +88,10 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
       if (minCommitmentAge) {
         const waitTimeSeconds = Number(minCommitmentAge) + 5 // Add 5 seconds buffer
         setWaitTime(waitTimeSeconds)
-        console.log('Set wait time to:', waitTimeSeconds, 'seconds (minCommitmentAge:', Number(minCommitmentAge), ')')
+        // Set wait time based on minCommitmentAge
       } else {
         setWaitTime(60) // Fallback 60 seconds
-        console.log('Using fallback wait time: 60 seconds')
+        // Using fallback wait time: 60 seconds
       }
     }
   }, [commitHash, step, minCommitmentAge])
@@ -102,7 +104,6 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
       setStep('success')
       
       // Only call onSuccess to refresh list, don't auto-reset form
-      console.log('Calling onSuccess to refresh domain list...')
       onSuccess() // Call to refresh domain list
     }
   }, [registerHash, isRegistering, onSuccess, domainName])
@@ -193,62 +194,77 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
               ))}
               </div>
               
-              {/* TLD Information */}
-              <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl">
-                <h3 className="text-sm font-semibold text-purple-900 mb-3 flex items-center">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Available Top-Level Domains
-                </h3>
-                <div className={`grid gap-3 ${
-                   availableTLDConfigs.length === 1 ? 'grid-cols-1' :
-                   availableTLDConfigs.length === 2 ? 'grid-cols-1 sm:grid-cols-2' :
-                   'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
-                 }`}>
-                   {availableTLDConfigs.map((tldConfig) => {
-                     const colorClasses = getTLDColorClasses(tldConfig.tld)
-                     const isSelected = selectedTLD === tldConfig.tld
-                     
-                     return (
-                       <div
-                         key={tldConfig.tld}
-                         className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${
-                           isSelected
-                             ? `${colorClasses.border} ${colorClasses.bg}`
-                             : `border-gray-200 bg-white ${colorClasses.hover}`
-                         }`}
-                         onClick={() => setSelectedTLD(tldConfig.tld)}
-                       >
-                         <div className="flex items-center justify-between">
-                           <div>
-                             <span className={`font-bold ${colorClasses.text}`}>
-                               {tldConfig.tld}
-                             </span>
-                             <p className="text-xs text-gray-600 mt-1">
-                               {tldConfig.description}
-                             </p>
-                             {tldConfig.isPrimary && (
-                               <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
-                                 Primary
+              {/* TLD Selection - Only show when requested */}
+              {showTLDSelector && (
+                <div className="mt-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-purple-900 flex items-center">
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Available Top-Level Domains
+                    </h3>
+                    <button
+                      onClick={() => setShowTLDSelector(false)}
+                      className="text-purple-400 hover:text-purple-600 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className={`grid gap-3 ${
+                     availableTLDConfigs.length === 1 ? 'grid-cols-1' :
+                     availableTLDConfigs.length === 2 ? 'grid-cols-1 sm:grid-cols-2' :
+                     'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3'
+                   }`}>
+                     {availableTLDConfigs.map((tldConfig) => {
+                       const colorClasses = getTLDColorClasses(tldConfig.tld)
+                       const isSelected = selectedTLD === tldConfig.tld
+                       
+                       return (
+                         <div
+                           key={tldConfig.tld}
+                           className={`p-3 rounded-lg border-2 transition-all cursor-pointer ${
+                             isSelected
+                               ? `${colorClasses.border} ${colorClasses.bg}`
+                               : `border-gray-200 bg-white ${colorClasses.hover}`
+                           }`}
+                           onClick={() => {
+                             setSelectedTLD(tldConfig.tld)
+                             setShowTLDSelector(false)
+                           }}
+                         >
+                           <div className="flex items-center justify-between">
+                             <div>
+                               <span className={`font-bold ${colorClasses.text}`}>
+                                 {tldConfig.tld}
                                </span>
+                               <p className="text-xs text-gray-600 mt-1">
+                                 {tldConfig.description}
+                               </p>
+                               {tldConfig.isPrimary && (
+                                 <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                                   Primary
+                                 </span>
+                               )}
+                             </div>
+                             {isSelected && (
+                               <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
+                                 tldConfig.color === 'purple' ? 'bg-purple-500' : 'bg-blue-500'
+                               }`}>
+                                 <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                 </svg>
+                               </div>
                              )}
                            </div>
-                           {isSelected && (
-                             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                               tldConfig.color === 'purple' ? 'bg-purple-500' : 'bg-blue-500'
-                             }`}>
-                               <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                               </svg>
-                             </div>
-                           )}
                          </div>
-                       </div>
-                     )
-                   })}
-                 </div>
-              </div>
+                       )
+                     })}
+                   </div>
+                </div>
+              )}
             </div>
         )}
 
@@ -269,29 +285,29 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
                 Domain Name
               </label>
               <div className="relative">
-                <div className="flex items-center bg-white border-2 border-gray-200 rounded-2xl shadow-lg hover:border-blue-300 focus-within:border-blue-500 transition-all duration-200">
-                  <input
-                    type="text"
-                    id="domain"
+                <DomainAutocomplete
                     value={domainName}
-                    onChange={(e) => setDomainName(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))}
-                    className="flex-1 px-6 py-4 text-xl font-medium bg-transparent border-0 focus:outline-none focus:ring-0 placeholder-gray-400"
-                    placeholder="yourname"
+                    onChange={setDomainName}
+                    onDomainSelect={(domain, tld) => {
+                      setDomainName(domain)
+                      setSelectedTLD(tld)
+                    }}
+                    placeholder="Enter your domain name"
                   />
-                  <div className="relative">
-                    <select
-                      value={selectedTLD}
-                      onChange={(e) => setSelectedTLD(e.target.value)}
-                      className="px-6 py-4 text-xl font-bold text-gray-700 bg-transparent border-l border-gray-200 focus:outline-none focus:ring-0 cursor-pointer hover:text-blue-600 transition-colors"
+                  
+                  {/* Manual TLD Selection Button */}
+                  <div className="mt-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowTLDSelector(true)}
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors flex items-center justify-center space-x-1 mx-auto"
                     >
-                      {availableTLDs.map((tld) => (
-                        <option key={tld} value={tld} className="text-lg">
-                          {tld}
-                        </option>
-                      ))}
-                    </select>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                      <span>Browse all available TLDs</span>
+                    </button>
                   </div>
-                </div>
                 {domainName && (
                   <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
                     <div className="flex items-center space-x-3">
@@ -581,7 +597,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
                     Registration Successful!
                   </h3>
                   <p className="text-xl text-green-800 mb-8">
-                    Congratulations! Your ENS domain is now registered.
+                    Congratulations! Your HNS domain is now registered.
                   </p>
                   <div className="bg-white rounded-2xl p-6 border border-green-200 mb-8">
                     <p className="text-lg text-gray-700">
@@ -610,7 +626,6 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
                     </button>
                     <button
                       onClick={() => {
-                        console.log('Navigating to domains tab...')
                         onSuccess() // Refresh domain list
                         onNavigateToDomains?.() // Navigate to domains tab
                       }}

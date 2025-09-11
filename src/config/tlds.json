@@ -27,6 +27,20 @@
         "publicResolver": "0x6ee28F095162FE166535d71B24b13DAF286df8F5"
       },
       "defaultEmail": "contact@hi.network"
+    },
+    {
+      "tld": ".t1",
+      "name": "T1",
+      "description": "Short form domain for quick access",
+      "color": "green",
+      "isPrimary": false,
+      "abiFolder": "t1",
+      "contracts": {
+        "registrarController": "0x4f2a71E47C8328f04cF4B9AF215C472AF48F32B5",
+        "nameWrapper": "0x4d6B427482b82d548847e4e54452ad5024D8051C",
+        "publicResolver": "0xC43D71986471Ec416184B3A0f073c639391A87E7"
+      },
+      "defaultEmail": "contact@t1.network"
     }
   ],
   "metadata": {

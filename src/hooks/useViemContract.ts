@@ -203,6 +203,7 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
       if (!isAvailable && baseRegistrarAddress && baseRegistrarABI) {
         try {
           // Generate domain hash for base registrar calls
+          // For ENS, we need to hash the label (name without TLD)
           const domainHash = keccak256(encodePacked(['string'], [name]))
           
           // Check ownership

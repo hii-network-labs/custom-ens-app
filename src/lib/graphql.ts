@@ -163,13 +163,12 @@ export interface DomainDetailsResponse {
 // Helper function to fetch owner's domains
 export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
   try {
-    console.log('Fetching domains for owner:', owner)
+
     
     // Fetch all domains first, then filter by ownership in application logic
     // This is necessary because domains might be owned through NameWrapper
     const response = await graphqlClient.request<DomainsResponse>(GET_ALL_DOMAINS)
-    console.log('All domains fetched:', response.domains.length)
-    console.log('Raw GraphQL response:', response)
+
     
     const ownerDomains: Domain[] = []
     
@@ -178,7 +177,7 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
       const directOwnerMatch = domain.owner?.id?.toLowerCase() === owner.toLowerCase()
       
       if (directOwnerMatch) {
-        console.log('Domain directly owned by user:', domain.name)
+
         ownerDomains.push(domain)
         continue
       }
@@ -187,14 +186,14 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
       // In this case, domain.owner will be NameWrapper contract address
       // and we need to check NameWrapper owner
       
-      console.log('Domain not directly owned by user:', domain.name, 'Owner:', domain.owner?.id)
+
       
       // Check NameWrapper ownership if NameWrapper is configured
       // NameWrapper address is determined dynamically based on domain TLD in checkNameWrapperOwnership
       try {
         const ownershipResult = await checkNameWrapperOwnership(domain.name, owner)
         if (ownershipResult.isOwner) {
-          console.log('Domain owned by user via NameWrapper:', domain.name)
+
           
           // Create new domain object with real owner instead of NameWrapper
           const domainWithRealOwner = {
@@ -205,42 +204,39 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
           }
           
           ownerDomains.push(domainWithRealOwner)
-        } else {
-          console.log('Domain not owned by user via NameWrapper:', domain.name)
         }
       } catch (error) {
-        console.log('Error checking NameWrapper ownership for:', domain.name, error)
+
         // Don't add domain if there's an error
       }
     }
     
-    console.log('Domains owned by user:', ownerDomains.length)
+
     
     // Filter and clean up domains
     const supportedTLDs = await getSupportedTLDs()
-    console.log('Supported TLDs:', supportedTLDs)
+
     const validDomains = ownerDomains.filter(domain => {
       // Check if domain has a valid name
       if (!domain.name) {
-        console.log('Filtering out domain without name:', domain)
+
         return false
       }
       
       // Check if domain ends with supported TLD
       const hasValidTLD = supportedTLDs.some((tld: string) => domain.name.endsWith(tld))
       if (!hasValidTLD) {
-        console.log('Filtering out domain with unsupported TLD:', domain.name)
+
         return false
       }
       
       // Accept domains even if they have encoded names or null labelName
       // These are valid domains that just haven't been properly decoded by the subgraph
-      console.log('Including domain:', domain.name, 'labelName:', domain.labelName)
+
       return true
     })
     
-    console.log('Valid domains after filtering:', validDomains.length)
-    console.log('Valid domains:', validDomains.map(d => d.name))
+
     
     return validDomains
   } catch (error) {
@@ -302,14 +298,14 @@ async function checkNameWrapperOwnership(domainName: string, userAddress: string
       NAME_WRAPPER_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_HII_NAME_WRAPPER as string
     } else {
       // No fallback available - NameWrapper not configured for this TLD
-      console.log('NameWrapper not configured for TLD:', domainName)
+
       return { isOwner: false }
     }
     
-    console.log('Using NameWrapper address for', domainName, ':', NAME_WRAPPER_ADDRESS)
+
     
     if (!NAME_WRAPPER_ADDRESS || NAME_WRAPPER_ADDRESS === '0x0000000000000000000000000000000000000000') {
-      console.log('NameWrapper address not configured for domain:', domainName)
+
       return { isOwner: false }
     }
 
@@ -333,19 +329,14 @@ async function checkNameWrapperOwnership(domainName: string, userAddress: string
     })
 
     const isOwner = nameWrapperOwner.toLowerCase() === userAddress.toLowerCase()
-    console.log('NameWrapper ownership check:', {
-      domain: domainName,
-      nameWrapperOwner: nameWrapperOwner,
-      userAddress: userAddress,
-      isOwner
-    })
+
 
     return { 
       isOwner, 
       realOwner: nameWrapperOwner 
     }
   } catch (error) {
-    console.log('Error checking NameWrapper ownership:', error)
+
     return { isOwner: false }
   }
 }

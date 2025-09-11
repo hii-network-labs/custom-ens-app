@@ -111,7 +111,7 @@ src/
 - **RPC URL**: http://103.69.99.57:8545
 - **Explorer**: https://explorer.testnet.hii.network
 - **Native Token**: HII
-- **The Graph**: http://103.69.98.81:8000/subgraphs/name/graphprotocol/ens_eth
+- **The Graph**: http://103.161.174.53:8000/subgraphs/name/graphprotocol/ens_eth
 
 ## HNS Contracts on Hii Network
 
@@ -163,7 +163,7 @@ Copy `.env.example` to `.env.local` and configure:
 # Required for production
 NEXT_PUBLIC_CHAIN_ID=29342
 NEXT_PUBLIC_RPC_URL=http://103.69.99.57:8545
-NEXT_PUBLIC_GRAPHQL_ENDPOINT=http://103.69.98.81:8000/subgraphs/name/graphprotocol/ens_eth
+NEXT_PUBLIC_GRAPHQL_ENDPOINT=http://103.161.174.53:8000/subgraphs/name/graphprotocol/ens_eth
 
 # Contract addresses (already configured for Hii Network)
 NEXT_PUBLIC_ENS_REGISTRY_ADDRESS=0x8bA3410bd15155F9bb25e46838A21D2eEa0c0945
@@ -228,7 +228,7 @@ vercel
 ```env
 NEXT_PUBLIC_CHAIN_ID=29342
 NEXT_PUBLIC_RPC_URL=http://103.69.99.57:8545
-NEXT_PUBLIC_GRAPHQL_ENDPOINT=http://103.69.98.81:8000/subgraphs/name/graphprotocol/ens_eth
+NEXT_PUBLIC_GRAPHQL_ENDPOINT=http://103.161.174.53:8000/subgraphs/name/graphprotocol/ens_eth
 NEXT_PUBLIC_ENS_REGISTRY_ADDRESS=0x8bA3410bd15155F9bb25e46838A21D2eEa0c0945
 NEXT_PUBLIC_BASE_REGISTRAR_ADDRESS=0x222349495048799C19995a65b32d86D20f1BA57A
 NEXT_PUBLIC_PUBLIC_RESOLVER_ADDRESS=0xa5895DC687Eb0672fCcd964da618dC99112F2D75

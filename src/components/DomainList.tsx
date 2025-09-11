@@ -52,7 +52,7 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
         No Domains Yet
       </h3>
       <p className="text-base sm:text-lg text-gray-600 mb-6 sm:mb-8 max-w-md mx-auto px-4">
-        You haven&apos;t registered any domains yet. Start building your Web3 identity by registering your first ENS domain!
+        You haven&apos;t registered any domains yet. Start building your Web3 identity by registering your first HNS domain!
       </p>
       <button
         onClick={() => window.location.hash = '#register'}
@@ -100,7 +100,7 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
             {domains.length < 4 && (
               <button
                 onClick={() => {
-                  console.log('Force refresh from blockchain...')
+              
                   onRefresh()
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors"
@@ -142,7 +142,7 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-bold text-lg text-gray-900 group-hover:text-blue-600 transition-colors truncate">{displayNames[domain.id] || domain.name}</h3>
-                    <p className="text-sm text-gray-500">ENS Domain</p>
+                    <p className="text-sm text-gray-500">HNS Domain</p>
                     {displayNames[domain.id] && displayNames[domain.id] !== domain.name && (
                       <p className="text-xs text-gray-400 font-mono truncate" title={domain.name}>Original: {domain.name}</p>
                     )}

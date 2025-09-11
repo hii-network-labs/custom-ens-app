@@ -254,6 +254,8 @@ export function useRentPrice(name: string, duration: number, tldConfig?: TLDConf
   const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
   const [abi, setAbi] = useState<any>(null)
   
+
+  
   useEffect(() => {
     const loadABI = async () => {
       if (currentTLDConfig) {
@@ -348,29 +350,18 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
       setIsRegistering(false)
       const errorMessage = registerError?.message || 'Registration failed. Please try again.'
       
-      console.log('=== REGISTRATION ERROR DETAILS ===')
-       console.log('Register hash:', registerHash)
-       console.log('Error object:', registerError)
-       console.log('Error message:', errorMessage)
-       console.log('Error cause:', (registerError as any)?.cause)
-       console.log('Error details:', (registerError as any)?.details)
-       console.log('Error data:', (registerError as any)?.data)
-       console.log('Error shortMessage:', (registerError as any)?.shortMessage)
-       console.log('Error metaMessages:', (registerError as any)?.metaMessages)
-       
-       // Check for specific contract errors
+      // Check for specific contract errors and provide user-friendly messages
        if (errorMessage.includes('CommitmentTooNew')) {
-         console.log('CONTRACT ERROR: Commitment is too new - wait longer before registering')
+         // Commitment is too new - wait longer before registering
        } else if (errorMessage.includes('CommitmentTooOld')) {
-         console.log('CONTRACT ERROR: Commitment is too old - need to commit again')
+         // Commitment is too old - need to commit again
        } else if (errorMessage.includes('NameNotAvailable')) {
-         console.log('CONTRACT ERROR: Domain name is not available for registration')
+         // Domain name is not available for registration
        } else if (errorMessage.includes('DurationTooShort')) {
-         console.log('CONTRACT ERROR: Registration duration is too short')
+         // Registration duration is too short
        } else if (errorMessage.includes('InsufficientValue')) {
-         console.log('CONTRACT ERROR: Insufficient payment value sent')
+         // Insufficient payment value sent
        }
-       console.log('==================================')
       
       // Handle specific error types
       let finalErrorMessage = ''
@@ -432,9 +423,7 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
       const extractedTLD = await extractTLD(name)
       const domainNameOnly = await extractDomainName(name)
       
-      console.log('DEBUG: makeCommitment - original name parameter:', name)
-      console.log('DEBUG: makeCommitment - extracted TLD:', extractedTLD)
-      console.log('DEBUG: makeCommitment - domain name only:', domainNameOnly)
+
       
       // Get the correct TLD config based on extracted TLD
       const correctTLDConfig = extractedTLD ? getTLDConfigSync(extractedTLD) : currentTLDConfig
@@ -443,7 +432,7 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         throw new Error(`TLD configuration not found for ${extractedTLD || 'current TLD'}`)
       }
       
-      console.log('DEBUG: makeCommitment - correct TLD config:', correctTLDConfig)
+
       
       // Create resolver data using the full domain name
       const defaultEmail = await getDefaultEmail(correctTLDConfig.tld)
@@ -454,13 +443,13 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         throw new Error('Public client not available')
       }
 
-      console.log('DEBUG: makeCommitment - full domain for resolver:', name)
+
 
       // Load TLD-specific ABI and contract address using correct TLD config
       const contractABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
       const contractAddress = getContractAddress(correctTLDConfig, 'ETHRegistrarController')
 
-      console.log('DEBUG: makeCommitment - contractAddress:', contractAddress)
+
 
       if (!contractAddress) {
         throw new Error('Contract address not found for the selected TLD')
@@ -566,10 +555,6 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         const extractedTLD = await extractTLD(name)
         const domainNameOnly = await extractDomainName(name)
       
-      console.log('DEBUG: registerDomain - original name parameter:', name)
-      console.log('DEBUG: registerDomain - extracted TLD:', extractedTLD)
-      console.log('DEBUG: registerDomain - domain name only:', domainNameOnly)
-      
       // Get the correct TLD config based on extracted TLD
       const correctTLDConfig = extractedTLD ? getTLDConfigSync(extractedTLD) : currentTLDConfig
       
@@ -577,7 +562,7 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         throw new Error(`TLD configuration not found for ${extractedTLD || 'current TLD'}`)
       }
       
-      console.log('DEBUG: registerDomain - correct TLD config:', correctTLDConfig)
+
       
       // Check commitment age before register
       if (publicClient && commitmentHash) {
@@ -733,20 +718,7 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         const registerABI = await loadContractABI(correctTLDConfig, 'ETHRegistrarController')
         const registerAddress = getContractAddress(correctTLDConfig, 'ETHRegistrarController')
         
-        console.log('=== CALLING WRITE REGISTER ===')
-        console.log('Register address:', registerAddress)
-        console.log('Function name: register')
-        console.log('Value:', price.toString())
-        console.log('Gas:', finalGasLimit.toString())
-        console.log('Account parameter:', account)
-        console.log('Owner parameter:', owner)
-        console.log('Domain name only:', domainNameOnly)
-        console.log('Duration (seconds):', BigInt(duration * 365 * 24 * 60 * 60).toString())
-        console.log('Secret hash:', secretHash)
-        console.log('Current timestamp:', new Date().toISOString())
-        console.log('Commitment age:', commitmentHash ? 'Available' : 'Not available')
-        console.log('===============================')
-        
+
         if (!registerAddress) {
           throw new Error('Contract address not found for the selected TLD')
         }
