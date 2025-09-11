@@ -17,8 +17,21 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
   const [duration, setDuration] = useState(1)
   const [step, setStep] = useState<'form' | 'success'>('form')
   const [successMessage, setSuccessMessage] = useState('')
+  const [domainName, setDomainName] = useState('')
   
-  const domainName = selectedDomain ? extractDomainName(selectedDomain) : ''
+  // Extract domain name asynchronously
+  useEffect(() => {
+    const updateDomainName = async () => {
+      if (selectedDomain) {
+        const name = await extractDomainName(selectedDomain)
+        setDomainName(name)
+      } else {
+        setDomainName('')
+      }
+    }
+    updateDomainName()
+  }, [selectedDomain])
+  
   const { data: rentPrice, isLoading: isPriceLoading } = useRentPrice(domainName, duration)
   const { renewDomain, loading, error, hash, isSuccess } = useRenewDomain()
 

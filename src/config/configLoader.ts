@@ -1,48 +1,36 @@
 // Configuration loader for TLD data
-// This module provides functions to load TLD configuration from JSON
-// In the future, this can be easily adapted to load from CDN
+// This module provides functions to load TLD configuration
+// Supports both local JSON and CDN sources via tldDataFetcher
 
-import tldConfigData from './tlds.json'
+import {
+  fetchTLDData,
+  getAllTLDConfigs as fetchAllTLDConfigs,
+  getTLDConfigData as fetchTLDConfigData,
+  getSupportedTLDStrings as fetchSupportedTLDStrings,
+  getPrimaryTLDConfig as fetchPrimaryTLDConfig,
+  type TLDConfigData,
+  type TLDDataResponse
+} from './tldDataFetcher'
 
+// Re-export types for backward compatibility
 export interface TLDContractAddresses {
   registrarController: string
   nameWrapper: string
   publicResolver: string
 }
 
-export interface TLDConfigData {
-  tld: string
-  name: string
-  description: string
-  color: string
-  isPrimary: boolean
-  abiFolder: string
-  contracts: TLDContractAddresses
-  defaultEmail: string
-}
+export type { TLDConfigData }
 
-export interface TLDConfigFile {
-  tlds: TLDConfigData[]
-  metadata: {
-    version: string
-    lastUpdated: string
-    description: string
-  }
-}
+// Legacy interface name for backward compatibility
+export interface TLDConfigFile extends TLDDataResponse {}
 
 /**
- * Load TLD configuration from JSON file
- * In the future, this function can be modified to fetch from CDN
+ * Load TLD configuration (supports both local JSON and CDN)
  * @returns Promise<TLDConfigFile> - The TLD configuration data
  */
 export async function loadTLDConfig(): Promise<TLDConfigFile> {
   try {
-    // Currently loading from local JSON file
-    // TODO: Replace with CDN fetch in the future
-    // const response = await fetch('https://cdn.example.com/tld-config.json')
-    // const config = await response.json()
-    
-    return tldConfigData as TLDConfigFile
+    return await fetchTLDData()
   } catch (error) {
     console.error('Failed to load TLD configuration:', error)
     throw new Error('Unable to load TLD configuration')
@@ -54,8 +42,7 @@ export async function loadTLDConfig(): Promise<TLDConfigFile> {
  * @returns Promise<TLDConfigData[]> - Array of TLD configurations
  */
 export async function getAllTLDConfigs(): Promise<TLDConfigData[]> {
-  const config = await loadTLDConfig()
-  return config.tlds
+  return await fetchAllTLDConfigs()
 }
 
 /**
@@ -64,8 +51,7 @@ export async function getAllTLDConfigs(): Promise<TLDConfigData[]> {
  * @returns Promise<TLDConfigData | undefined> - TLD configuration or undefined if not found
  */
 export async function getTLDConfigData(tld: string): Promise<TLDConfigData | undefined> {
-  const configs = await getAllTLDConfigs()
-  return configs.find(config => config.tld === tld)
+  return await fetchTLDConfigData(tld)
 }
 
 /**
@@ -87,8 +73,7 @@ export async function getContractAddress(
  * @returns Promise<string[]> - Array of supported TLD strings
  */
 export async function getSupportedTLDStrings(): Promise<string[]> {
-  const configs = await getAllTLDConfigs()
-  return configs.map(config => config.tld)
+  return await fetchSupportedTLDStrings()
 }
 
 /**
@@ -96,8 +81,7 @@ export async function getSupportedTLDStrings(): Promise<string[]> {
  * @returns Promise<TLDConfigData | undefined> - Primary TLD configuration
  */
 export async function getPrimaryTLDConfig(): Promise<TLDConfigData | undefined> {
-  const configs = await getAllTLDConfigs()
-  return configs.find(config => config.isPrimary)
+  return await fetchPrimaryTLDConfig()
 }
 
 /**

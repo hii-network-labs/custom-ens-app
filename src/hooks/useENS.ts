@@ -85,12 +85,12 @@ export function useCommitmentValidity(commitmentHash: string | null, tldConfig?:
   }, [currentTLDConfig])
   
   const result = useReadContract({
-    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    address: currentTLDConfig?.registrarController as `0x${string}`,
     abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'commitments',
     args: commitmentHash ? [commitmentHash] : undefined,
     query: {
-      enabled: !!commitmentHash && !!abi
+      enabled: !!commitmentHash && !!abi && !!currentTLDConfig?.registrarController
     }
   })
 
@@ -123,20 +123,20 @@ export function useCommitmentTiming(tldConfig?: TLDConfig) {
   }, [currentTLDConfig])
   
   const minAgeResult = useReadContract({
-    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    address: currentTLDConfig?.registrarController as `0x${string}`,
     abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'minCommitmentAge',
     query: {
-      enabled: !!abi
+      enabled: !!abi && !!currentTLDConfig?.registrarController
     }
   })
 
   const maxAgeResult = useReadContract({
-    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    address: currentTLDConfig?.registrarController as `0x${string}`,
     abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'maxCommitmentAge',
     query: {
-      enabled: !!abi
+      enabled: !!abi && !!currentTLDConfig?.registrarController
     }
   })
 
@@ -170,12 +170,12 @@ export function useDomainAvailability(name: string, tldConfig?: TLDConfig) {
   }, [currentTLDConfig])
   
   const result = useReadContract({
-    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    address: currentTLDConfig?.registrarController as `0x${string}`,
     abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'available',
     args: name ? [name] : undefined,
     query: {
-      enabled: !!name && name.length > 0 && !!abi
+      enabled: !!name && name.length > 0 && !!abi && !!currentTLDConfig?.registrarController
     }
   })
 
@@ -272,13 +272,13 @@ export function useRentPrice(name: string, duration: number, tldConfig?: TLDConf
   }, [currentTLDConfig])
   
   const result = useReadContract({
-    address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+    address: currentTLDConfig?.registrarController as `0x${string}`,
     abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
     functionName: 'rentPrice',
     args: [name, BigInt(duration * 365 * 24 * 60 * 60)], // duration in seconds
     chainId: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!), // Hii Network chain ID
     query: {
-      enabled: !!name && name.length >= 3 && duration > 0 && !!abi,
+      enabled: !!name && name.length >= 3 && duration > 0 && !!abi && !!currentTLDConfig?.registrarController,
       retry: 3,
       retryDelay: 1000
     }
@@ -847,7 +847,7 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
     
     try {
       writeContract({
-        address: (currentTLDConfig?.registrarController || HNS_CONTRACTS.ETH_REGISTRAR_CONTROLLER) as `0x${string}`,
+        address: currentTLDConfig?.registrarController as `0x${string}`,
         abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'renew',
         args: [name, BigInt(duration * 365 * 24 * 60 * 60)],
@@ -933,7 +933,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
       
       // Check owner from ENS Registry
       const registryOwner = await publicClient.readContract({
-        address: HNS_CONTRACTS.REGISTRY,
+        address: HNS_CONTRACTS.registry as `0x${string}`,
         abi: HNS_REGISTRY_ABI,
         functionName: 'owner',
         args: [node]
@@ -942,7 +942,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
 
       
       // If owner is NameWrapper, check BaseRegistrar ownership
-      if (registryOwner.toLowerCase() === HNS_CONTRACTS.NAME_WRAPPER.toLowerCase()) {
+      if (currentTLDConfig?.nameWrapper && registryOwner.toLowerCase() === currentTLDConfig.nameWrapper.toLowerCase()) {
 
         
         // Calculate tokenId from label hash
@@ -951,7 +951,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
         
         // Check token owner in BaseRegistrar
         const baseRegistrarOwner = await publicClient.readContract({
-          address: HNS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
+          address: HNS_CONTRACTS.baseRegistrarImplementation as `0x${string}`,
           abi: [
             {
               "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
@@ -972,7 +972,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
 
           
           writeContract({
-            address: HNS_CONTRACTS.BASE_REGISTRAR_IMPLEMENTATION,
+            address: HNS_CONTRACTS.baseRegistrarImplementation as `0x${string}`,
             abi: [
               {
                 "inputs": [
@@ -994,7 +994,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
           
           // Get current resolver
           const currentResolver = await publicClient.readContract({
-            address: HNS_CONTRACTS.REGISTRY,
+            address: HNS_CONTRACTS.registry as `0x${string}`,
             abi: HNS_REGISTRY_ABI,
             functionName: 'resolver',
             args: [node]
@@ -1002,7 +1002,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
           
           // Get current TTL
           const currentTTL = await publicClient.readContract({
-            address: HNS_CONTRACTS.REGISTRY,
+            address: HNS_CONTRACTS.registry as `0x${string}`,
             abi: HNS_REGISTRY_ABI,
             functionName: 'ttl',
             args: [node]
@@ -1011,7 +1011,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
           
           
           writeContract({
-            address: HNS_CONTRACTS.NAME_WRAPPER,
+              address: currentTLDConfig?.nameWrapper as `0x${string}`,
             abi: [
               {
                 "inputs": [
@@ -1034,7 +1034,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
 
         
         writeContract({
-          address: HNS_CONTRACTS.REGISTRY,
+          address: HNS_CONTRACTS.registry as `0x${string}`,
           abi: HNS_REGISTRY_ABI,
           functionName: 'setOwner',
           args: [node, newOwner as `0x${string}`]
@@ -1133,7 +1133,7 @@ async function fetchDomainsFromBlockchain(ownerAddress: string): Promise<Domain[
               
               // Check current owner
               const currentOwner = await publicClient.readContract({
-                address: HNS_CONTRACTS.REGISTRY,
+                address: HNS_CONTRACTS.registry as `0x${string}`,
                 abi: HNS_REGISTRY_ABI,
                 functionName: 'owner',
                 args: [node]

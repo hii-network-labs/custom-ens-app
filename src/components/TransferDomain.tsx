@@ -21,7 +21,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
   const handleTransfer = async () => {
     if (!selectedDomain || !newOwner || !confirmTransfer) return
     
-    const domainName = extractDomainName(selectedDomain)
+    const domainName = await extractDomainName(selectedDomain)
     
     try {
       await transferDomain(domainName, newOwner)

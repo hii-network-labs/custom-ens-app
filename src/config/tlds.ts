@@ -112,12 +112,12 @@ export async function getDefaultEmail(tld?: string): Promise<string> {
     if (tld) {
       const config = await getTLDConfigData(tld)
       if (config) {
-        return config.defaultEmail
+        return config.defaultEmail || process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hii.network'
       }
     } else {
       const primaryConfig = await getPrimaryTLDConfig()
       if (primaryConfig) {
-        return primaryConfig.defaultEmail
+        return primaryConfig.defaultEmail || process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hii.network'
       }
     }
     return process.env.NEXT_PUBLIC_DEFAULT_EMAIL || 'contact@hii.network'

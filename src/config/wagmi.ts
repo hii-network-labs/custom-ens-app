@@ -2,24 +2,24 @@ import { http, createConfig } from 'wagmi'
 import { metaMask } from 'wagmi/connectors'
 import { defineChain } from 'viem'
 
-// Define Hii Network chain
+// Define the custom Hii Network chain using environment variables
 export const hiiNetwork = defineChain({
-  id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID!),
-  name: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NAME!,
+  id: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_CHAIN_ID || '1'),
+  name: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NAME || 'Hii Network',
   nativeCurrency: {
-    name: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NATIVE_CURRENCY_NAME!,
-    symbol: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NATIVE_CURRENCY_SYMBOL!,
-    decimals: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NATIVE_CURRENCY_DECIMALS!),
+    decimals: parseInt(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NATIVE_CURRENCY_DECIMALS || '18'),
+    name: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NATIVE_CURRENCY_NAME || 'HII',
+    symbol: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_NATIVE_CURRENCY_SYMBOL || 'HII',
   },
   rpcUrls: {
     default: {
-      http: [process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!],
+      http: [process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC || 'https://rpc.hii.network'],
     },
   },
   blockExplorers: {
     default: {
       name: 'Hii Explorer',
-      url: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_EXPLORER!,
+      url: process.env.NEXT_PUBLIC_CUSTOM_NETWORK_EXPLORER || 'https://explorer.hii.network',
     },
   },
 })
@@ -36,11 +36,7 @@ export const config = createConfig({
     }),
   ],
   transports: {
-    [hiiNetwork.id]: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!, {
-      timeout: 30000, // 30 seconds timeout
-      retryCount: 3,
-      retryDelay: 1000, // 1 second delay between retries
-    }),
+    [hiiNetwork.id]: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC || 'https://rpc.hii.network'),
   },
 })
 
