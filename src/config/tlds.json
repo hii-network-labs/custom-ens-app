@@ -1,0 +1,51 @@
+{
+  "tlds": [
+    {
+      "tld": ".hii",
+      "name": "HII",
+      "description": "Primary HNS domain for Hii Network",
+      "color": "blue",
+      "isPrimary": true,
+      "abiFolder": "hii",
+      "contracts": {
+        "registrarController": "0x67F2401715f4B032d47063BAa0c2e4add77bF0B3",
+        "nameWrapper": "0x2C9Ae8F4dEdB37B4Ca315649fC3F5fE44e9f8C7c",
+        "publicResolver": "0xBa276F1CC69d0302a83772E9f64B094be317fdF0"
+      },
+      "defaultEmail": "contact@hii.network"
+    },
+    {
+      "tld": ".hi",
+      "name": "HI",
+      "description": "Short form domain for quick access",
+      "color": "purple",
+      "isPrimary": false,
+      "abiFolder": "hi",
+      "contracts": {
+        "registrarController": "0x449f3CC30Cb557f32282dd606A692eB225593C62",
+        "nameWrapper": "0xf6B2ca47BaAdc108F6ceE8044869d9E49Ee543CD",
+        "publicResolver": "0x6ee28F095162FE166535d71B24b13DAF286df8F5"
+      },
+      "defaultEmail": "contact@hi.network"
+    },
+    {
+      "tld": ".t1",
+      "name": "T1",
+      "description": "Short form domain for quick access",
+      "color": "green",
+      "isPrimary": false,
+      "abiFolder": "t1",
+      "contracts": {
+        "registrarController": "0x4f2a71E47C8328f04cF4B9AF215C472AF48F32B5",
+        "nameWrapper": "0x4d6B427482b82d548847e4e54452ad5024D8051C",
+        "publicResolver": "0xC43D71986471Ec416184B3A0f073c639391A87E7"
+      },
+      "defaultEmail": "contact@t1.network"
+    }
+  ],
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "2024-01-10T00:00:00Z",
+    "description": "TLD configuration for HNS (HII Name Service)"
+  }
+}

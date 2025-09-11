@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { formatEther } from 'viem'
 import { useRentPrice, useRenewDomain } from '@/hooks/useENS'
 import { Domain } from '@/lib/graphql'
+import { extractDomainName } from '@/config/tlds'
+import tldData from '@/config/tlds.json'
 
 interface RenewDomainProps {
   domains: Domain[]
@@ -16,10 +18,46 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
   const [duration, setDuration] = useState(1)
   const [step, setStep] = useState<'form' | 'success'>('form')
   const [successMessage, setSuccessMessage] = useState('')
+  const [domainName, setDomainName] = useState('')
   
-  const domainName = selectedDomain ? selectedDomain.replace('.hii', '') : ''
-  const { data: rentPrice, isLoading: isPriceLoading } = useRentPrice(domainName, duration)
-  const { renewDomain, loading, error, hash, isSuccess } = useRenewDomain()
+  // Extract domain name asynchronously
+  useEffect(() => {
+    const updateDomainName = async () => {
+      if (selectedDomain) {
+        const name = await extractDomainName(selectedDomain)
+        // Remove trailing dot if present (extractDomainName returns "aiaiai." for "aiaiai.hii")
+        const cleanName = name.endsWith('.') ? name.slice(0, -1) : name
+        setDomainName(cleanName)
+      } else {
+        setDomainName('')
+      }
+    }
+    updateDomainName()
+  }, [selectedDomain])
+  
+  // Get the correct TLD config for the selected domain
+  const selectedTLD = selectedDomain ? tldData.tlds.find(config => selectedDomain.endsWith(config.tld))?.tld : null
+  const jsonTldConfig = selectedTLD ? tldData.tlds.find(config => config.tld === selectedTLD) : undefined
+  
+  // Convert JSON config to TLDConfig format
+  const tldConfig = jsonTldConfig ? {
+    tld: jsonTldConfig.tld,
+    name: jsonTldConfig.name,
+    description: jsonTldConfig.description,
+    color: jsonTldConfig.color,
+    registrarController: jsonTldConfig.contracts?.registrarController,
+    nameWrapper: jsonTldConfig.contracts?.nameWrapper,
+    publicResolver: jsonTldConfig.contracts?.publicResolver,
+    isPrimary: jsonTldConfig.isPrimary,
+    abiFolder: jsonTldConfig.abiFolder,
+    defaultEmail: jsonTldConfig.defaultEmail
+  } : undefined
+  
+  const { data: rentPriceData, isLoading: isPriceLoading, error: priceError } = useRentPrice(domainName, duration, tldConfig)
+  
+
+
+  const { renewDomain, loading, error, hash, isSuccess } = useRenewDomain(tldConfig)
 
   // Handle transaction success
   useEffect(() => {
@@ -31,11 +69,29 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
   }, [hash, isSuccess, selectedDomain, duration, onSuccess])
 
   const handleRenew = async () => {
-    if (!selectedDomain || !rentPrice) return
+    if (!selectedDomain || !rentPriceData) return
     
     try {
-      // Calculate total price from rentPrice object
-      const totalPrice = rentPrice.base + rentPrice.premium
+      // Handle both array and object formats from the contract
+      let totalPrice: bigint
+      if (Array.isArray(rentPriceData)) {
+        const priceData = rentPriceData as [bigint, bigint]
+        totalPrice = priceData[0] + priceData[1] // base + premium
+      } else {
+        const priceData = rentPriceData as { base: bigint; premium: bigint }
+        totalPrice = priceData.base + priceData.premium // base + premium
+      }
+      
+      // Apply scaling correction for .hi TLD (contract returns prices 1,000,000x too high)
+       const tld = selectedDomain.includes('.hi') ? '.hi' : '.hii'
+      //  if (tld === '.hi') {
+      //   totalPrice = totalPrice / BigInt(1000000)
+      //   console.log('Applied .hi TLD price correction for renewal:', {
+      //     original: (priceData[0] + priceData[1]).toString(),
+      //     corrected: totalPrice.toString()
+      //   })
+      // }
+      
       await renewDomain(domainName, duration, totalPrice)
       // Don't reset form here - wait for transaction success
     } catch (err) {
@@ -64,6 +120,10 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Renewal Successful!</h3>
               <p className="text-gray-600 mb-4">{successMessage}</p>
+              <div className="text-sm text-gray-600 mb-4">
+                  <div>Domain: {selectedDomain}</div>
+                  <div>Duration: {duration} year{duration !== 1 ? 's' : ''}</div>
+                </div>
               {hash && (
                 <div className="text-sm text-green-600 mt-4">
                   <p>Transaction hash:</p>
@@ -159,13 +219,33 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
 
             {selectedDomain && duration && (
               <div className="bg-gray-50 rounded-lg p-4">
+
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-700">Renewal Price:</span>
                   <span className="text-lg font-semibold text-gray-900">
                     {isPriceLoading ? (
                       <span className="animate-pulse">Calculating...</span>
-                    ) : rentPrice ? (
-                      `${formatEther(rentPrice.base + rentPrice.premium)} HII`
+                    ) : priceError ? (
+                      <span className="text-red-500">Error loading price</span>
+                    ) : rentPriceData ? (
+                      (() => {
+                        try {
+                          // Handle both array and object formats
+                          let totalPrice: bigint
+                          if (Array.isArray(rentPriceData)) {
+                            const priceData = rentPriceData as [bigint, bigint]
+                            totalPrice = priceData[0] + priceData[1]
+                          } else {
+                            const priceData = rentPriceData as { base: bigint; premium: bigint }
+                            totalPrice = priceData.base + priceData.premium
+                          }
+                          const formattedPrice = formatEther(totalPrice)
+                          return isNaN(parseFloat(formattedPrice)) ? 'Price unavailable' : `${formattedPrice} HII`
+                        } catch (error) {
+                          console.error('Price formatting error:', error)
+                          return 'Price unavailable'
+                        }
+                      })()
                     ) : (
                       'N/A'
                     )}
@@ -186,7 +266,7 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
 
             <button
               onClick={handleRenew}
-              disabled={!selectedDomain || !rentPrice || loading || isPriceLoading}
+              disabled={!selectedDomain || !rentPriceData || loading || isPriceLoading}
               className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-md font-medium transition-colors"
             >
               {loading ? 'Renewing...' : 'Renew Domain'}
