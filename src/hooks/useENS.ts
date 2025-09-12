@@ -5,7 +5,7 @@ import { parseEther, keccak256, encodePacked, namehash, getAddress, encodeFuncti
 import { HNS_CONTRACTS, ETH_REGISTRAR_CONTROLLER_ABI, HNS_REGISTRY_ABI } from '@/config/contracts'
 import { fetchDomainsByOwner, Domain } from '@/lib/graphql'
 import { useToast } from '@/components/Toast'
-import { TLDConfig, getTLDConfigSync, getDefaultTLDSync, getDefaultEmail, extractTLD, extractDomainName } from '../config/tlds'
+import { TLDConfig, getTLDConfigSync, getDefaultTLDSync, getDefaultEmail, extractTLD, extractDomainName, extractDomainNameSync } from '../config/tlds'
 import { loadContractABI, getContractAddress } from '@/utils/contractLoader'
 
 // Sleep function similar to NestJS
@@ -300,6 +300,9 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
   
   // Use provided TLD config or default
   const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
+  
+  // Get commitment timing for dynamic wait time
+  const { minAge: minCommitmentAge } = useCommitmentTiming(currentTLDConfig)
 
   const [isCommitting, setIsCommitting] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
@@ -308,11 +311,13 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
   const [estimatedGas, setEstimatedGas] = useState<bigint | null>(null)
   const [hasShownCommitSuccess, setHasShownCommitSuccess] = useState(false)
   const [hasShownRegisterSuccess, setHasShownRegisterSuccess] = useState(false)
+  const [hasShownCommitError, setHasShownCommitError] = useState(false)
+  const [hasShownRegisterError, setHasShownRegisterError] = useState(false)
   
-  const { writeContract: writeCommit, data: commitHash } = useWriteContract()
-  const { writeContract: writeRegister, data: registerHash } = useWriteContract()
+  const { writeContract: writeCommit, data: commitHash, error: writeCommitError } = useWriteContract()
+  const { writeContract: writeRegister, data: registerHash, error: writeRegisterError } = useWriteContract()
   
-  const { isLoading: isCommitConfirming, isSuccess: isCommitSuccess } = useWaitForTransactionReceipt({
+  const { isLoading: isCommitConfirming, isSuccess: isCommitSuccess, isError: isCommitError, error: commitError } = useWaitForTransactionReceipt({
     hash: commitHash,
   })
   
@@ -325,14 +330,95 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
     if (isCommitSuccess && !hasShownCommitSuccess) {
       setIsCommitting(false)
       setHasShownCommitSuccess(true)
+      const waitTime = minCommitmentAge || 60
       addToast({ 
         type: 'success', 
         title: 'Success', 
-        message: 'Commitment submitted successfully! Please wait 60 seconds before registering.',
+        message: `Commitment submitted successfully! Please wait ${waitTime} seconds before registering.`,
         duration: 5000
       })
     }
-  }, [isCommitSuccess, hasShownCommitSuccess, addToast])
+  }, [isCommitSuccess, hasShownCommitSuccess, addToast, minCommitmentAge])
+  
+  // Handle writeCommit errors (user rejection at writeContract level)
+  useEffect(() => {
+    if (writeCommitError && !hasShownCommitError) {
+      console.log('🚫 Commit writeContract error:', writeCommitError.message)
+      console.log('🔄 Clearing isCommitting state due to writeCommitError')
+      setIsCommitting(false)
+      setError(null) // Clear any previous errors
+      setHasShownCommitError(true) // Prevent duplicate error notifications
+      const errorMessage = writeCommitError.message || 'Unknown error'
+      if (errorMessage.includes('User rejected') || errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+        addToast({ 
+          type: 'error', 
+          title: 'Transaction Cancelled', 
+          message: 'You cancelled the commitment transaction.',
+          duration: 4000
+        })
+      } else {
+        addToast({ 
+          type: 'error', 
+          title: 'Commitment Failed', 
+          message: `Failed to submit commitment: ${errorMessage}`,
+          duration: 6000
+        })
+      }
+    }
+  }, [writeCommitError, hasShownCommitError, addToast])
+
+  // Additional safeguard: Clear processing states when writeContract errors occur
+  useEffect(() => {
+    if (writeCommitError) {
+      console.log('🔄 Additional safeguard: Clearing isCommitting due to writeCommitError')
+      setIsCommitting(false)
+    }
+    if (writeRegisterError) {
+      console.log('🔄 Additional safeguard: Clearing isRegistering due to writeRegisterError')
+      setIsRegistering(false)
+    }
+  }, [writeCommitError, writeRegisterError])
+
+  // Handle commit errors (transaction receipt errors, not user rejection)
+  useEffect(() => {
+    if (isCommitError && commitError && !writeCommitError) {
+      setIsCommitting(false)
+      const errorMessage = commitError.message || 'Unknown error'
+      addToast({ 
+        type: 'error', 
+        title: 'Commitment Failed', 
+        message: `Transaction failed: ${errorMessage}`,
+        duration: 6000
+      })
+    }
+  }, [isCommitError, commitError, writeCommitError, addToast])
+
+  // Handle writeRegister errors (user rejection at writeContract level)
+  useEffect(() => {
+    if (writeRegisterError && !hasShownRegisterError) {
+      console.log('🚫 Register writeContract error:', writeRegisterError.message)
+      console.log('🔄 Clearing isRegistering state due to writeRegisterError')
+      setIsRegistering(false)
+      setError(null) // Clear any previous errors
+      setHasShownRegisterError(true) // Prevent duplicate error notifications
+      const errorMessage = writeRegisterError.message || 'Unknown error'
+      if (errorMessage.includes('User rejected') || errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+        addToast({ 
+          type: 'error', 
+          title: 'Transaction Cancelled', 
+          message: 'You cancelled the registration transaction.',
+          duration: 4000
+        })
+      } else {
+        addToast({ 
+          type: 'error', 
+          title: 'Registration Failed', 
+          message: `Failed to submit registration: ${errorMessage}`,
+          duration: 6000
+        })
+      }
+    }
+  }, [writeRegisterError, hasShownRegisterError, addToast])
 
   // Reset states when register succeeds or fails
   useEffect(() => {
@@ -346,47 +432,45 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         duration: 5000
       })
     }
-    if (isRegisterError) {
+    if (isRegisterError && !writeRegisterError) {
       setIsRegistering(false)
       const errorMessage = registerError?.message || 'Registration failed. Please try again.'
       
-      // Check for specific contract errors and provide user-friendly messages
-       if (errorMessage.includes('CommitmentTooNew')) {
-         // Commitment is too new - wait longer before registering
-       } else if (errorMessage.includes('CommitmentTooOld')) {
-         // Commitment is too old - need to commit again
-       } else if (errorMessage.includes('NameNotAvailable')) {
-         // Domain name is not available for registration
-       } else if (errorMessage.includes('DurationTooShort')) {
-         // Registration duration is too short
-       } else if (errorMessage.includes('InsufficientValue')) {
-         // Insufficient payment value sent
-       }
-      
-      // Handle specific error types
+      // Handle specific error types (no user rejection here as it's handled by writeRegisterError)
       let finalErrorMessage = ''
+      let errorTitle = 'Registration Error'
+      
       if (errorMessage.includes('insufficient funds') || errorMessage.includes('insufficient balance')) {
-        finalErrorMessage = 'Transaction failed: Insufficient balance. Please check your balance and try again.'
+        finalErrorMessage = 'Insufficient balance. Please check your balance and try again.'
+        errorTitle = 'Insufficient Funds'
+      } else if (errorMessage.includes('CommitmentTooNew')) {
+        finalErrorMessage = 'Please wait longer before registering. The commitment period has not elapsed yet.'
+        errorTitle = 'Too Early'
+      } else if (errorMessage.includes('CommitmentTooOld')) {
+        finalErrorMessage = 'Your commitment has expired. Please start the registration process again.'
+        errorTitle = 'Commitment Expired'
+      } else if (errorMessage.includes('NameNotAvailable')) {
+        finalErrorMessage = 'This domain name is no longer available for registration.'
+        errorTitle = 'Domain Unavailable'
+      } else if (errorMessage.includes('InsufficientValue')) {
+        finalErrorMessage = 'Insufficient payment sent. Please check the registration cost.'
+        errorTitle = 'Payment Error'
       } else if (errorMessage.includes('gas')) {
-        finalErrorMessage = `Transaction failed: Gas error. ${errorMessage}`
-      } else if (errorMessage.includes('nonce')) {
-        finalErrorMessage = `Transaction failed: Nonce error. ${errorMessage}`
-      } else if (errorMessage.includes('revert')) {
-        finalErrorMessage = `Transaction failed: Contract revert. ${errorMessage}`
-      } else if (errorMessage.includes('user rejected')) {
-        finalErrorMessage = 'Transaction cancelled by user.'
+        finalErrorMessage = `Gas estimation failed: ${errorMessage}`
+        errorTitle = 'Gas Error'
       } else {
         finalErrorMessage = `Transaction failed: ${errorMessage}`
       }
+      
       setError(finalErrorMessage)
       addToast({ 
         type: 'error', 
-        title: 'Registration Error', 
+        title: errorTitle, 
         message: finalErrorMessage,
         duration: 8000
       })
     }
-  }, [isRegisterSuccess, isRegisterError, registerError, hasShownRegisterSuccess, addToast])
+  }, [isRegisterSuccess, isRegisterError, registerError, writeRegisterError, hasShownRegisterSuccess, addToast])
 
 
 
@@ -415,6 +499,8 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
     // Reset notification flags for new registration
     setHasShownCommitSuccess(false)
     setHasShownRegisterSuccess(false)
+    setHasShownCommitError(false)
+    setHasShownRegisterError(false)
     setError(null)
     setIsCommitting(true)
     
@@ -497,11 +583,14 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         account: account as `0x${string}`
       })
     } catch (err) {
-
+      console.log('🚫 Commit preparation error:', err)
       const errorMessage = err instanceof Error ? err.message : 'Failed to make commitment'
-       setError(errorMessage)
-       setIsCommitting(false)
-       addToast({ type: 'error', title: 'Commitment Error', message: errorMessage })
+      setError(errorMessage)
+      setIsCommitting(false)
+      // Only show toast if it's not a user rejection (those are handled by writeCommitError useEffect)
+      if (!errorMessage.includes('User rejected') && !errorMessage.includes('user rejected') && !errorMessage.includes('User denied')) {
+        addToast({ type: 'error', title: 'Commitment Error', message: errorMessage })
+      }
     }
   }, [writeCommit, isConnected, account, publicClient])
 
@@ -547,6 +636,8 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
 
     setError(null)
     setIsRegistering(true)
+    // Reset error flag for new registration attempt
+    setHasShownRegisterError(false)
     
     try {
       const secretHash = keccak256(encodePacked(['string'], [secret]))
@@ -753,10 +844,14 @@ export function useRegisterDomain(tldConfig?: TLDConfig) {
         setIsRegistering(false)
       }
     } catch (err) {
+      console.log('🚫 Register preparation error:', err)
       const errorMessage = err instanceof Error ? err.message : 'Failed to register domain'
-       setError(errorMessage)
-       setIsRegistering(false)
-       addToast({ type: 'error', title: 'Registration Error', message: errorMessage })
+      setError(errorMessage)
+      setIsRegistering(false)
+      // Only show toast if it's not a user rejection (those are handled by writeRegisterError useEffect)
+      if (!errorMessage.includes('User rejected') && !errorMessage.includes('user rejected') && !errorMessage.includes('User denied')) {
+        addToast({ type: 'error', title: 'Registration Error', message: errorMessage })
+      }
     }
   }, [writeRegister, commitmentHash, balance, isConnected, account, publicClient, addToast]);
 
@@ -778,12 +873,14 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [abi, setAbi] = useState<any>(null)
+  const [hasShownRenewError, setHasShownRenewError] = useState(false)
+  const { addToast } = useToast()
 
   // Get current TLD configuration - ensure we have a valid config
   const currentTLDConfig = tldConfig
   
-  console.log('useRenewDomain HOOK - tldConfig passed:', tldConfig)
-  console.log('useRenewDomain HOOK - final currentTLDConfig:', currentTLDConfig)
+  // console.log('useRenewDomain HOOK - tldConfig passed:', tldConfig)
+  // console.log('useRenewDomain HOOK - final currentTLDConfig:', currentTLDConfig)
   
   // Only validate TLD config when it's provided (not on initial mount)
   if (tldConfig && !currentTLDConfig) {
@@ -809,8 +906,43 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
     loadABI()
   }, [currentTLDConfig])
   
-  const { writeContract, data: hash } = useWriteContract()
+  const { writeContract, data: hash, error: writeRenewError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  // Handle writeContract errors (user rejection at writeContract level)
+  useEffect(() => {
+    if (writeRenewError && !hasShownRenewError) {
+      console.log('🚫 Renew writeContract error:', writeRenewError.message)
+      console.log('🔄 Clearing loading state due to writeRenewError')
+      setLoading(false)
+      setError(null) // Clear any previous errors
+      setHasShownRenewError(true) // Prevent duplicate error notifications
+      const errorMessage = writeRenewError.message || 'Unknown error'
+      if (errorMessage.includes('User rejected') || errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+        addToast({ 
+          type: 'error', 
+          title: 'Transaction Cancelled', 
+          message: 'You cancelled the renewal transaction.',
+          duration: 4000
+        })
+      } else {
+        addToast({ 
+          type: 'error', 
+          title: 'Renewal Failed', 
+          message: `Failed to submit renewal: ${errorMessage}`,
+          duration: 6000
+        })
+      }
+    }
+  }, [writeRenewError, hasShownRenewError, addToast])
+
+  // Additional safeguard: Clear processing states when writeContract errors occur
+  useEffect(() => {
+    if (writeRenewError) {
+      console.log('🔄 Additional safeguard: Clearing loading due to writeRenewError')
+      setLoading(false)
+    }
+  }, [writeRenewError])
 
   // Reset loading state when transaction is confirmed
   useEffect(() => {
@@ -870,14 +1002,16 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [abi, setAbi] = useState<any>(null)
+  const [hasShownTransferError, setHasShownTransferError] = useState(false)
+  const { addToast } = useToast()
   
   // Get current TLD configuration - don't fallback to default
   const currentTLDConfig = tldConfig
   
   // Debug logging for TLD configuration
   useEffect(() => {
-    console.log('useTransferDomain HOOK - tldConfig passed:', tldConfig)
-    console.log('useTransferDomain HOOK - final currentTLDConfig:', currentTLDConfig)
+    // console.log('useTransferDomain HOOK - tldConfig passed:', tldConfig)
+    // console.log('useTransferDomain HOOK - final currentTLDConfig:', currentTLDConfig)
     if (currentTLDConfig) {
       console.log('useTransferDomain HOOK - Using NameWrapper:', currentTLDConfig.nameWrapper)
     }
@@ -901,8 +1035,43 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
   }, [currentTLDConfig])
   
   const { address } = useAccount()
-  const { writeContract, data: hash, reset: resetTransaction } = useWriteContract()
+  const { writeContract, data: hash, reset: resetTransaction, error: writeTransferError } = useWriteContract()
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash })
+
+  // Handle writeContract errors (user rejection at writeContract level)
+  useEffect(() => {
+    if (writeTransferError && !hasShownTransferError) {
+      console.log('🚫 Transfer writeContract error:', writeTransferError.message)
+      console.log('🔄 Clearing loading state due to writeTransferError')
+      setLoading(false)
+      setError(null) // Clear any previous errors
+      setHasShownTransferError(true) // Prevent duplicate error notifications
+      const errorMessage = writeTransferError.message || 'Unknown error'
+      if (errorMessage.includes('User rejected') || errorMessage.includes('user rejected') || errorMessage.includes('User denied')) {
+        addToast({ 
+          type: 'error', 
+          title: 'Transaction Cancelled', 
+          message: 'You cancelled the transfer transaction.',
+          duration: 4000
+        })
+      } else {
+        addToast({ 
+          type: 'error', 
+          title: 'Transfer Failed', 
+          message: `Failed to submit transfer: ${errorMessage}`,
+          duration: 6000
+        })
+      }
+    }
+  }, [writeTransferError, hasShownTransferError, addToast])
+
+  // Additional safeguard: Clear processing states when writeContract errors occur
+  useEffect(() => {
+    if (writeTransferError) {
+      console.log('🔄 Additional safeguard: Clearing loading due to writeTransferError')
+      setLoading(false)
+    }
+  }, [writeTransferError])
 
   // Reset loading state when transaction is confirmed
   useEffect(() => {
@@ -960,12 +1129,35 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
 
         
         // Calculate tokenId from label hash
-        const labelHash = keccak256(encodePacked(['string'], [domainName.split('.')[0]]))
+        // Extract just the label part (without TLD) for tokenId calculation
+        const labelOnly = extractDomainNameSync(domainName)
+        const labelHash = keccak256(encodePacked(['string'], [labelOnly]))
         const tokenId = BigInt(labelHash)
         
-        // Check token owner in BaseRegistrar
+        console.log('transferDomain - Full domain name:', domainName)
+        console.log('transferDomain - Label only for tokenId:', labelOnly)
+        console.log('transferDomain - Calculated tokenId:', tokenId.toString())
+        
+        // Get the BaseRegistrar address from the TLD-specific NameWrapper
+        const baseRegistrarAddress = await publicClient.readContract({
+          address: currentTLDConfig.nameWrapper as `0x${string}`,
+          abi: [
+            {
+              "inputs": [],
+              "name": "registrar",
+              "outputs": [{"internalType": "contract IBaseRegistrar", "name": "", "type": "address"}],
+              "stateMutability": "view",
+              "type": "function"
+            }
+          ],
+          functionName: 'registrar'
+        })
+        
+        console.log('transferDomain - TLD-specific BaseRegistrar address:', baseRegistrarAddress)
+        
+        // Check token owner in TLD-specific BaseRegistrar
         const baseRegistrarOwner = await publicClient.readContract({
-          address: HNS_CONTRACTS.baseRegistrarImplementation as `0x${string}`,
+          address: baseRegistrarAddress as `0x${string}`,
           abi: [
             {
               "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
@@ -986,7 +1178,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
 
           
           writeContract({
-            address: HNS_CONTRACTS.baseRegistrarImplementation as `0x${string}`,
+            address: baseRegistrarAddress as `0x${string}`,
             abi: [
               {
                 "inputs": [

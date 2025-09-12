@@ -146,10 +146,13 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
   const [isSuccess, setIsSuccess] = useState(false)
 
   const fetchDomainStatus = useCallback(async () => {
+    // console.log('🔍 fetchDomainStatus called for:', name)
+    
     // Use provided TLD config or default
     const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
     
     if (!name || name.trim() === '' || name.length < 3 || !currentTLDConfig) {
+      console.log('❌ Invalid parameters:', { name, currentTLDConfig })
       setData(null)
       setIsLoading(false)
       setError(null)
@@ -157,6 +160,7 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
       return
     }
 
+    // console.log('⏳ Starting domain status check for:', { name, tld: currentTLDConfig.tld })
     setIsLoading(true)
     setError(null)
     setIsSuccess(false)
@@ -184,12 +188,15 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
       })
 
       // Check if domain is available
+      console.log('📞 Calling contract.available for:', name)
       const isAvailable = await client.readContract({
         address: registrarAddress as `0x${string}`,
         abi: registrarABI,
         functionName: 'available',
         args: [name]
       }) as boolean
+      
+      // console.log('📋 Contract returned availability:', { name, isAvailable })
 
       let domainStatus: DomainStatus = {
         available: isAvailable,
@@ -328,6 +335,7 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
         }
       }
 
+      // console.log('✅ Final domain status:', { name, domainStatus })
       setData(domainStatus)
       setIsSuccess(true)
       setError(null)
