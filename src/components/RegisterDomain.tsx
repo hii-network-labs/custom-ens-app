@@ -131,17 +131,13 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
 
   // Reset step when processing states are cleared (e.g., transaction rejected)
   useEffect(() => {
-    // If we're in commit step but not committing anymore, reset to form
-    if (step === 'commit' && !isCommitting && !error) {
-      console.log('🔄 Commit step completed or cancelled, resetting to form')
+    // If we're in commit step but not committing anymore, reset to form ONLY if there's no commit hash (meaning it was cancelled/rejected)
+    if (step === 'commit' && !isCommitting && !error && !commitHash) {
+      console.log('🔄 Commit step cancelled, resetting to form')
       setStep('form')
     }
-    // If we're in register step but not registering anymore, reset to form
-    if (step === 'register' && !isRegistering && !error) {
-      console.log('🔄 Register step completed or cancelled, resetting to form')
-      setStep('form')
-    }
-  }, [step, isCommitting, isRegistering, error])
+    // Don't auto-reset register step - let it stay active until user completes registration or there's an error
+  }, [step, isCommitting, isRegistering, error, commitHash, registerHash])
 
   const handleCommit = async () => {
     if (!address || !domainName || !secret) return
