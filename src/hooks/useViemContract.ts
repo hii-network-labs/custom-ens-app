@@ -151,12 +151,28 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
     // Use provided TLD config or default
     const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
     
-    if (!name || name.trim() === '' || name.length < 3 || !currentTLDConfig) {
+    if (!name || name.trim() === '' || !currentTLDConfig) {
       console.log('❌ Invalid parameters:', { name, currentTLDConfig })
       setData(null)
       setIsLoading(false)
       setError(null)
       setIsSuccess(false)
+      return
+    }
+
+    // Handle domain names that are too short
+    if (name.length < 3) {
+      console.log('❌ Domain name too short:', name)
+      setData({
+        available: false,
+        registered: false,
+        expired: false,
+        inGracePeriod: false,
+        statusText: 'too short'
+      })
+      setIsLoading(false)
+      setError(null)
+      setIsSuccess(true)
       return
     }
 
