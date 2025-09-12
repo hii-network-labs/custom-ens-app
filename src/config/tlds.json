@@ -41,6 +41,20 @@
         "publicResolver": "0xC43D71986471Ec416184B3A0f073c639391A87E7"
       },
       "defaultEmail": "contact@t1.network"
+    },
+    {
+      "tld": ".luv",
+      "name": "LUV",
+      "description": "Short form domain for quick access",
+      "color": "yellow",
+      "isPrimary": false,
+
+      "contracts": {
+        "registrarController": "0x2a54225d2867bFc4b662b3Ac900e254311c976BD",
+        "nameWrapper": "0x08613c039a27bcf1b8b8190DfF4Fd7697E87A6af",
+        "publicResolver": "0xD8521Ce4B2bA1De87E1831d6A6bafe8F98FAC5Ad"
+      },
+      "defaultEmail": "contact@luv.network"
     }
   ],
   "metadata": {
