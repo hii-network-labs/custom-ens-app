@@ -5,6 +5,7 @@ import { isAddress } from 'viem'
 import { useTransferDomain } from '@/hooks/useENS'
 import { Domain } from '@/lib/graphql'
 import { extractDomainName } from '@/config/tlds'
+import tldData from '@/config/tlds.json'
 
 interface TransferDomainProps {
   domains: Domain[]
@@ -15,13 +16,53 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
   const [selectedDomain, setSelectedDomain] = useState('')
   const [newOwner, setNewOwner] = useState('')
   const [confirmTransfer, setConfirmTransfer] = useState(false)
+  const [domainName, setDomainName] = useState('')
   
-  const { transferDomain, loading, error, isSuccess, resetTransferState } = useTransferDomain()
+  // Extract domain name asynchronously
+  useEffect(() => {
+    const updateDomainName = async () => {
+      if (selectedDomain) {
+        const name = await extractDomainName(selectedDomain)
+        // Remove trailing dot if present (extractDomainName returns "aiaiai." for "aiaiai.hii")
+        const cleanName = name.endsWith('.') ? name.slice(0, -1) : name
+        setDomainName(cleanName)
+      } else {
+        setDomainName('')
+      }
+    }
+    updateDomainName()
+  }, [selectedDomain])
+  
+  // Get the correct TLD config for the selected domain
+  const selectedTLD = selectedDomain ? tldData.tlds.find(config => selectedDomain.endsWith(config.tld))?.tld : null
+  const jsonTldConfig = selectedTLD ? tldData.tlds.find(config => config.tld === selectedTLD) : undefined
+  
+  // Convert JSON config to TLDConfig format
+  const tldConfig = jsonTldConfig ? {
+    tld: jsonTldConfig.tld,
+    name: jsonTldConfig.name,
+    description: jsonTldConfig.description,
+    color: jsonTldConfig.color,
+    registrarController: jsonTldConfig.contracts?.registrarController,
+    nameWrapper: jsonTldConfig.contracts?.nameWrapper,
+    publicResolver: jsonTldConfig.contracts?.publicResolver,
+    isPrimary: jsonTldConfig.isPrimary,
+    defaultEmail: jsonTldConfig.defaultEmail
+  } : undefined
+  
+  // Debug logging for TLD configuration
+  useEffect(() => {
+    if (selectedDomain && tldConfig) {
+      console.log('TransferDomain - Selected domain:', selectedDomain)
+      console.log('TransferDomain - TLD config:', tldConfig)
+      console.log('TransferDomain - NameWrapper:', tldConfig.nameWrapper)
+    }
+  }, [selectedDomain, tldConfig])
+  
+  const { transferDomain, loading, error, isSuccess, resetTransferState } = useTransferDomain(tldConfig)
 
   const handleTransfer = async () => {
     if (!selectedDomain || !newOwner || !confirmTransfer) return
-    
-    const domainName = await extractDomainName(selectedDomain)
     
     try {
       await transferDomain(domainName, newOwner)
@@ -118,7 +159,7 @@ export default function TransferDomain({ domains, onSuccess }: TransferDomainPro
                   <div>
                     <span className="font-medium">Current Owner:</span>
                     <span className="ml-2 font-mono text-xs">
-                      {selectedDomainData.owner.id}
+                      {selectedDomainData.owner?.id || 'Unknown'}
                     </span>
                   </div>
                   {selectedDomainData.expiryDate && (

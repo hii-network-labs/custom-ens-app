@@ -9,7 +9,6 @@ export interface TLDConfigData {
   description: string
   color: string
   isPrimary?: boolean
-  abiFolder?: string
   contracts: {
     registrarController: string
     nameWrapper: string

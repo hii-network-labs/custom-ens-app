@@ -206,37 +206,120 @@ export function useViemDomainStatus(name: string, tldConfig?: TLDConfig) {
           // For ENS, we need to hash the label (name without TLD)
           const domainHash = keccak256(encodePacked(['string'], [name]))
           
-          // Check ownership
-          const owner = await client.readContract({
-            address: baseRegistrarAddress as `0x${string}`,
-            abi: baseRegistrarABI,
-            functionName: 'ownerOf',
-            args: [domainHash]
-          }) as string
+          let owner: string | null = null
+          let expiryTimestamp: bigint | null = null
+          
+          // Check ownership - handle case where token doesn't exist
+          try {
+            owner = await client.readContract({
+              address: baseRegistrarAddress as `0x${string}`,
+              abi: baseRegistrarABI,
+              functionName: 'ownerOf',
+              args: [domainHash]
+            }) as string
+          } catch (ownerError: any) {
+            // If ownerOf reverts, the token might not exist in base registrar
+             // But it could be wrapped in NameWrapper - check that first
+             if (ownerError.message?.includes('execution reverted') || ownerError.name === 'ContractFunctionRevertedError') {
+               // Check if domain is wrapped in NameWrapper
+               const nameWrapperAddress = currentTLDConfig?.nameWrapper
+               if (nameWrapperAddress && nameWrapperAddress !== '0x0000000000000000000000000000000000000000') {
+                 try {
+                   // Import namehash function from viem
+                   const { namehash } = await import('viem')
+                   const fullDomainName = `${name}${currentTLDConfig.tld}`
+                   const node = namehash(fullDomainName)
+                   
+                   const nameWrapperOwner = await client.readContract({
+                     address: nameWrapperAddress as `0x${string}`,
+                     abi: [{
+                       "inputs": [{"internalType": "uint256", "name": "id", "type": "uint256"}],
+                       "name": "ownerOf",
+                       "outputs": [{"internalType": "address", "name": "owner", "type": "address"}],
+                       "stateMutability": "view",
+                       "type": "function"
+                     }],
+                     functionName: 'ownerOf',
+                     args: [BigInt(node)]
+                   }) as string
+                   
+                   // If NameWrapper has an owner, domain is registered and wrapped
+                   if (nameWrapperOwner && nameWrapperOwner !== '0x0000000000000000000000000000000000000000') {
+                     domainStatus = {
+                       available: false,
+                       registered: true,
+                       expired: false,
+                       inGracePeriod: false,
+                       owner: nameWrapperOwner,
+                       statusText: 'Registered'
+                     }
+                     setData(domainStatus)
+                     setIsSuccess(true)
+                     setError(null)
+                     return
+                   }
+                 } catch (nameWrapperError) {
+                   console.warn('Could not check NameWrapper ownership:', nameWrapperError)
+                 }
+               }
+               
+               // If we reach here, domain is truly not registered anywhere
+              domainStatus = {
+                available: true,
+                registered: false,
+                expired: false,
+                inGracePeriod: false,
+                statusText: 'Available'
+              }
+              setData(domainStatus)
+              setIsSuccess(true)
+              setError(null)
+              return
+            }
+            throw ownerError
+          }
 
-          // Check expiry date
-          const expiryTimestamp = await client.readContract({
-            address: baseRegistrarAddress as `0x${string}`,
-            abi: baseRegistrarABI,
-            functionName: 'nameExpires',
-            args: [domainHash]
-          }) as bigint
+          // Check expiry date only if we have an owner
+          if (owner) {
+            try {
+              expiryTimestamp = await client.readContract({
+                address: baseRegistrarAddress as `0x${string}`,
+                abi: baseRegistrarABI,
+                functionName: 'nameExpires',
+                args: [domainHash]
+              }) as bigint
+            } catch (expiryError) {
+              console.warn('Could not fetch expiry date:', expiryError)
+            }
+          }
 
-          const expiryDate = new Date(Number(expiryTimestamp) * 1000)
-          const now = new Date()
-          const gracePeriodEnd = new Date(expiryDate.getTime() + (90 * 24 * 60 * 60 * 1000)) // 90 days grace period
+          if (owner && expiryTimestamp) {
+            const expiryDate = new Date(Number(expiryTimestamp) * 1000)
+            const now = new Date()
+            const gracePeriodEnd = new Date(expiryDate.getTime() + (90 * 24 * 60 * 60 * 1000)) // 90 days grace period
 
-          const isExpired = now > expiryDate
-          const isInGracePeriod = isExpired && now <= gracePeriodEnd
+            const isExpired = now > expiryDate
+            const isInGracePeriod = isExpired && now <= gracePeriodEnd
 
-          domainStatus = {
-            available: false,
-            registered: true,
-            expired: isExpired,
-            inGracePeriod: isInGracePeriod,
-            owner,
-            expiryDate,
-            statusText: isInGracePeriod ? 'In Grace Period' : isExpired ? 'Expired' : 'Registered'
+            domainStatus = {
+              available: false,
+              registered: true,
+              expired: isExpired,
+              inGracePeriod: isInGracePeriod,
+              owner,
+              expiryDate,
+              statusText: isInGracePeriod ? 'In Grace Period' : isExpired ? 'Expired' : 'Registered'
+            }
+          } else if (owner) {
+            // Has owner but no expiry info
+            domainStatus = {
+              available: false,
+              registered: true,
+              expired: false,
+              inGracePeriod: false,
+              owner,
+              statusText: 'Registered'
+            }
           }
         } catch (detailError) {
           // If we can't get detailed info, just mark as registered

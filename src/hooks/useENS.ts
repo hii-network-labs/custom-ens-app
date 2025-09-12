@@ -779,8 +779,18 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
   const [error, setError] = useState<string | null>(null)
   const [abi, setAbi] = useState<any>(null)
 
-  // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
+  // Get current TLD configuration - ensure we have a valid config
+  const currentTLDConfig = tldConfig
+  
+  console.log('useRenewDomain HOOK - tldConfig passed:', tldConfig)
+  console.log('useRenewDomain HOOK - final currentTLDConfig:', currentTLDConfig)
+  
+  // Only validate TLD config when it's provided (not on initial mount)
+  if (tldConfig && !currentTLDConfig) {
+    console.error('useRenewDomain HOOK - No TLD config provided!')
+  } else if (currentTLDConfig) {
+    console.log('useRenewDomain HOOK - Using registrar controller:', currentTLDConfig.registrarController)
+  }
 
   useEffect(() => {
     const loadABI = async () => {
@@ -818,8 +828,23 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
     setLoading(true)
     
     try {
+      if (!currentTLDConfig) {
+        throw new Error('No TLD configuration provided to useRenewDomain hook')
+      }
+      
+      const contractAddress = currentTLDConfig.registrarController as `0x${string}`
+      
+      if (!contractAddress) {
+        throw new Error(`No registrar controller address found for TLD: ${currentTLDConfig.tld}`)
+      }
+      
+      console.log('useRenewDomain - Current TLD config:', currentTLDConfig)
+      console.log('useRenewDomain - Contract address being used:', contractAddress)
+      console.log('useRenewDomain - Domain name:', name)
+      console.log('useRenewDomain - ABI being used:', abi ? 'Custom ABI' : 'Default ABI')
+      
       writeContract({
-        address: currentTLDConfig?.registrarController as `0x${string}`,
+        address: contractAddress,
         abi: abi || ETH_REGISTRAR_CONTROLLER_ABI,
         functionName: 'renew',
         args: [name, BigInt(duration * 365 * 24 * 60 * 60)],
@@ -829,7 +854,7 @@ export function useRenewDomain(tldConfig?: TLDConfig) {
       setError(err instanceof Error ? err.message : 'Failed to renew domain')
       setLoading(false)
     }
-  }, [writeContract])
+  }, [writeContract, currentTLDConfig, abi])
 
   return {
     renewDomain,
@@ -846,8 +871,17 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
   const [error, setError] = useState<string | null>(null)
   const [abi, setAbi] = useState<any>(null)
   
-  // Get current TLD configuration
-  const currentTLDConfig = tldConfig || getTLDConfigSync(getDefaultTLDSync())
+  // Get current TLD configuration - don't fallback to default
+  const currentTLDConfig = tldConfig
+  
+  // Debug logging for TLD configuration
+  useEffect(() => {
+    console.log('useTransferDomain HOOK - tldConfig passed:', tldConfig)
+    console.log('useTransferDomain HOOK - final currentTLDConfig:', currentTLDConfig)
+    if (currentTLDConfig) {
+      console.log('useTransferDomain HOOK - Using NameWrapper:', currentTLDConfig.nameWrapper)
+    }
+  }, [tldConfig, currentTLDConfig])
   
   useEffect(() => {
     const loadABI = async () => {
@@ -885,8 +919,16 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
     setLoading(true)
     
     try {
+      // Validate TLD config is available
+      if (!currentTLDConfig) {
+        throw new Error('No TLD configuration available. Please select a domain first.')
+      }
+      
+      console.log('transferDomain - Using TLD config:', currentTLDConfig)
+      console.log('transferDomain - NameWrapper address:', currentTLDConfig.nameWrapper)
+      
       // Calculate node hash for domain using the selected TLD
-      const node = namehash(`${domainName}${currentTLDConfig?.tld || '.hii'}`)
+      const node = namehash(`${domainName}${currentTLDConfig.tld}`)
       
       // Check if domain is wrapped in NameWrapper
       const publicClient = createPublicClient({
@@ -1016,7 +1058,7 @@ export function useTransferDomain(tldConfig?: TLDConfig) {
       setError(err instanceof Error ? err.message : 'Failed to transfer domain')
       setLoading(false)
     }
-  }, [writeContract])
+  }, [writeContract, currentTLDConfig, address])
 
   const resetTransferState = useCallback(() => {
     resetTransaction()

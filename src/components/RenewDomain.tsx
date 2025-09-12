@@ -49,13 +49,21 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
     nameWrapper: jsonTldConfig.contracts?.nameWrapper,
     publicResolver: jsonTldConfig.contracts?.publicResolver,
     isPrimary: jsonTldConfig.isPrimary,
-    abiFolder: jsonTldConfig.abiFolder,
     defaultEmail: jsonTldConfig.defaultEmail
   } : undefined
   
   const { data: rentPriceData, isLoading: isPriceLoading, error: priceError } = useRentPrice(domainName, duration, tldConfig)
   
 
+
+  // Debug logging for TLD configuration
+  useEffect(() => {
+    if (selectedDomain && tldConfig) {
+      console.log('RenewDomain - Selected domain:', selectedDomain)
+      console.log('RenewDomain - TLD config:', tldConfig)
+      console.log('RenewDomain - Registrar controller:', tldConfig.registrarController)
+    }
+  }, [selectedDomain, tldConfig])
 
   const { renewDomain, loading, error, hash, isSuccess } = useRenewDomain(tldConfig)
 
@@ -82,15 +90,7 @@ export default function RenewDomain({ domains, onSuccess, onNavigateToDomains }:
         totalPrice = priceData.base + priceData.premium // base + premium
       }
       
-      // Apply scaling correction for .hi TLD (contract returns prices 1,000,000x too high)
-       const tld = selectedDomain.includes('.hi') ? '.hi' : '.hii'
-      //  if (tld === '.hi') {
-      //   totalPrice = totalPrice / BigInt(1000000)
-      //   console.log('Applied .hi TLD price correction for renewal:', {
-      //     original: (priceData[0] + priceData[1]).toString(),
-      //     corrected: totalPrice.toString()
-      //   })
-      // }
+      // No TLD-specific price corrections needed - using dynamic TLD configuration
       
       await renewDomain(domainName, duration, totalPrice)
       // Don't reset form here - wait for transaction success

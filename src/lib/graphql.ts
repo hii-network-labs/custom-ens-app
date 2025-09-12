@@ -2,6 +2,7 @@ import { GraphQLClient } from 'graphql-request'
 import { createPublicClient, http, namehash } from 'viem'
 import { HNS_CONTRACTS } from '@/config/contracts'
 import { getSupportedTLDs } from '@/config/tlds'
+import { getTLDConfigData } from '@/config/tldDataFetcher'
 
 // Helper function to decode encoded domain names
 export async function getDisplayName(domain: Domain): Promise<string> {
@@ -137,9 +138,9 @@ export interface Domain {
   name: string
   labelName: string
   labelhash: string
-  owner: {
+  owner?: {
     id: string
-  }
+  } | null
   resolver?: {
     id: string
     texts?: string[]
@@ -163,21 +164,29 @@ export interface DomainDetailsResponse {
 // Helper function to fetch owner's domains
 export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
   try {
-
+    // console.log('Fetching domains for owner:', owner)
     
     // Fetch all domains first, then filter by ownership in application logic
     // This is necessary because domains might be owned through NameWrapper
+    // console.log("🚀 ~ fetchDomainsByOwner ~ GET_ALL_DOMAINS:", GET_ALL_DOMAINS)
     const response = await graphqlClient.request<DomainsResponse>(GET_ALL_DOMAINS)
-
+    // console.log('All domains fetched:', response.domains.length)
+    // console.log('Raw GraphQL response:', response)
     
     const ownerDomains: Domain[] = []
     
     for (const domain of response.domains) {
+      // Skip domains with null or undefined owners
+      if (!domain.owner || !domain.owner.id) {
+        console.warn(`Skipping domain ${domain.name} with null owner`)
+        continue
+      }
+      
       // Check owner match - can be direct owner or NameWrapper
-      const directOwnerMatch = domain.owner?.id?.toLowerCase() === owner.toLowerCase()
+      const directOwnerMatch = domain.owner.id.toLowerCase() === owner.toLowerCase()
       
       if (directOwnerMatch) {
-
+        // console.log('Domain directly owned by user:', domain.name)
         ownerDomains.push(domain)
         continue
       }
@@ -186,14 +195,14 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
       // In this case, domain.owner will be NameWrapper contract address
       // and we need to check NameWrapper owner
       
-
+      // console.log('Domain not directly owned by user:', domain.name, 'Owner:', domain.owner?.id)
       
       // Check NameWrapper ownership if NameWrapper is configured
       // NameWrapper address is determined dynamically based on domain TLD in checkNameWrapperOwnership
       try {
         const ownershipResult = await checkNameWrapperOwnership(domain.name, owner)
         if (ownershipResult.isOwner) {
-
+          // console.log('Domain owned by user via NameWrapper:', domain.name)
           
           // Create new domain object with real owner instead of NameWrapper
           const domainWithRealOwner = {
@@ -204,22 +213,24 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
           }
           
           ownerDomains.push(domainWithRealOwner)
+        } else {
+          // console.log('Domain not owned by user via NameWrapper:', domain.name)
         }
       } catch (error) {
-
+        console.log('Error checking NameWrapper ownership for:', domain.name, error)
         // Don't add domain if there's an error
       }
     }
     
-
+    // console.log('Domains owned by user:', ownerDomains.length)
     
     // Filter and clean up domains
     const supportedTLDs = await getSupportedTLDs()
-
+    // console.log('Supported TLDs:', supportedTLDs)
     const validDomains = ownerDomains.filter(domain => {
       // Check if domain has a valid name
       if (!domain.name) {
-
+        // console.log('Filtering out domain without name:', domain)
         return false
       }
       
@@ -230,24 +241,97 @@ export async function fetchDomainsByOwner(owner: string): Promise<Domain[]> {
         return false
       }
       
+      // Debug logging for domains with null labelName
+      if (domain.labelName === null || domain.labelName === undefined) {
+        console.log('DEBUG: Found domain with null labelName:', {
+          id: domain.id,
+          name: domain.name,
+          labelName: domain.labelName,
+          resolver: domain.resolver
+        })
+        // Filter out domains with null labelName as they are incomplete
+        return false
+      }
+      
       // Accept domains even if they have encoded names or null labelName
       // These are valid domains that just haven't been properly decoded by the subgraph
-
+      // console.log('Including domain:', domain.name, 'labelName:', domain.labelName)
       return true
     })
     
-
+    // console.log('Valid domains after filtering:', validDomains.length)
+    // console.log('Valid domains:', validDomains.map(d => d.name))
     
     return validDomains
   } catch (error) {
     console.error('Error fetching domains:', error)
     
-    // Check if it's a GraphQL indexing error
+    // Check if it's a GraphQL error
     if (error && typeof error === 'object' && 'response' in error) {
       const graphqlError = error as any
+      
+      // Handle null owner field errors
+      if (graphqlError.response?.errors?.some((e: any) => e.message?.includes('Null value resolved for non-null field'))) {
+        console.warn('GraphQL subgraph has domains with null owners. Attempting to fetch domains with blockchain fallback.')
+        // Return empty array and let the calling code handle blockchain fallback
+        return []
+      }
+      
+      // Handle indexing errors
       if (graphqlError.response?.errors?.some((e: any) => e.message === 'indexing_error')) {
         console.warn('GraphQL subgraph is experiencing indexing issues. This is a temporary issue with the indexing service.')
-        // Don't throw here - let the calling code handle the fallback
+        throw new Error('INDEXING_ERROR')
+      }
+    }
+    
+    return []
+  }
+}
+
+// Helper function to fetch all domains with debug logging for null labelName
+export async function fetchAllDomains(): Promise<Domain[]> {
+  try {
+    console.log('DEBUG: Fetching all domains from GraphQL...')
+    const response = await graphqlClient.request<DomainsResponse>(GET_ALL_DOMAINS)
+    
+    console.log(`DEBUG: Received ${response.domains.length} domains from GraphQL`)
+    
+    // Filter out invalid domains and log null labelName domains for debugging
+    const validDomains = response.domains.filter((domain: Domain) => {
+      // Debug logging for domains with null labelName
+      if (domain.labelName === null || domain.labelName === undefined) {
+        console.log('DEBUG: Found domain with null labelName:', {
+          id: domain.id,
+          name: domain.name,
+          labelName: domain.labelName,
+          resolver: domain.resolver
+        })
+        // Filter out domains with null labelName as they are incomplete
+        return false
+      }
+      
+      // Accept domains with valid labelName (even if encoded)
+      return true
+    })
+    
+    console.log(`DEBUG: After filtering, ${validDomains.length} valid domains remain`)
+    return validDomains
+  } catch (error) {
+    console.error('Error fetching all domains:', error)
+    
+    // Check if it's a GraphQL error
+    if (error && typeof error === 'object' && 'response' in error) {
+      const graphqlError = error as any
+      
+      // Handle null owner field errors
+      if (graphqlError.response?.errors?.some((e: any) => e.message?.includes('Null value resolved for non-null field'))) {
+        console.warn('GraphQL subgraph has domains with null owners. Returning empty array.')
+        return []
+      }
+      
+      // Handle indexing errors
+      if (graphqlError.response?.errors?.some((e: any) => e.message === 'indexing_error')) {
+        console.warn('GraphQL subgraph is experiencing indexing issues. This is a temporary issue with the indexing service.')
         throw new Error('INDEXING_ERROR')
       }
     }
@@ -290,17 +374,22 @@ async function checkNameWrapperOwnership(domainName: string, userAddress: string
       transport: http(process.env.NEXT_PUBLIC_CUSTOM_NETWORK_RPC!)
     })
 
-    // Determine the correct NameWrapper contract based on domain TLD
-    let NAME_WRAPPER_ADDRESS: string
-    if (domainName.endsWith('.hi')) {
-      NAME_WRAPPER_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_HI_NAME_WRAPPER as string
-    } else if (domainName.endsWith('.hii')) {
-      NAME_WRAPPER_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_HII_NAME_WRAPPER as string
-    } else {
-      // No fallback available - NameWrapper not configured for this TLD
-
+    // Determine the correct NameWrapper contract based on domain TLD using dynamic configuration
+    const supportedTLDs = await getSupportedTLDs()
+    const tld = supportedTLDs.find(tld => domainName.endsWith(tld))
+    
+    if (!tld) {
+      console.log(`[checkNameWrapperOwnership] Unsupported TLD for domain: ${domainName}`)
       return { isOwner: false }
     }
+    
+    const tldConfig = await getTLDConfigData(tld)
+    if (!tldConfig || !tldConfig.contracts.nameWrapper) {
+      console.log(`[checkNameWrapperOwnership] No NameWrapper configured for TLD: ${tld}`)
+      return { isOwner: false }
+    }
+    
+    const NAME_WRAPPER_ADDRESS = tldConfig.contracts.nameWrapper
     
 
     
