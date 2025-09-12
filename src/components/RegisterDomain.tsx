@@ -38,7 +38,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
   
   
   const { data: rentPrice, isLoading: isPriceLoading, formattedPrice } = useViemRentPrice(domainName, duration, currentTLDConfig)
-  const { data: domainStatus, isLoading: availabilityLoading, error: availabilityError } = useViemDomainStatus(domainName, currentTLDConfig)
+  const { data: domainStatus, isLoading: availabilityLoading, error: availabilityError, refetch: refetchDomainStatus } = useViemDomainStatus(domainName, currentTLDConfig)
   const isAvailable = domainStatus?.available ?? null
   
 
@@ -99,14 +99,49 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
   // Monitor register transaction status - only reset when transaction succeeds
   useEffect(() => {
     if (registerHash && !isRegistering) {
+      console.log('🎉 Registration successful for:', fullDomainName)
+      console.log('📊 Domain status before refetch:', { isAvailable, isLoading: availabilityLoading, domainStatus })
+      
       // Show success message with full domain name
       setSuccessMessage(`Domain ${fullDomainName} has been registered successfully!`)
       setStep('success')
       
-      // Only call onSuccess to refresh list, don't auto-reset form
+      // Refresh domain availability status and domain list
+      console.log('🔄 Calling refetchDomainStatus...')
+      refetchDomainStatus() // Update domain availability status
       onSuccess() // Call to refresh domain list
+      
+      // Check status after a short delay
+      setTimeout(() => {
+        console.log('📊 Domain status after refetch:', { isAvailable, isLoading: availabilityLoading, domainStatus })
+      }, 1000)
     }
-  }, [registerHash, isRegistering, onSuccess, domainName])
+  }, [registerHash, isRegistering, onSuccess, domainName, fullDomainName, refetchDomainStatus, isAvailable, availabilityLoading, domainStatus])
+
+  // Handle errors and reset processing states
+  useEffect(() => {
+    if (error && !isCommitting && !isRegistering) {
+      console.log('🚫 Registration error detected, resetting to form step:', error)
+      // Reset to form step when there's an error and no processing is happening
+      if (step === 'commit' || step === 'register') {
+        setStep('form')
+      }
+    }
+  }, [error, isCommitting, isRegistering, step])
+
+  // Reset step when processing states are cleared (e.g., transaction rejected)
+  useEffect(() => {
+    // If we're in commit step but not committing anymore, reset to form
+    if (step === 'commit' && !isCommitting && !error) {
+      console.log('🔄 Commit step completed or cancelled, resetting to form')
+      setStep('form')
+    }
+    // If we're in register step but not registering anymore, reset to form
+    if (step === 'register' && !isRegistering && !error) {
+      console.log('🔄 Register step completed or cancelled, resetting to form')
+      setStep('form')
+    }
+  }, [step, isCommitting, isRegistering, error])
 
   const handleCommit = async () => {
     if (!address || !domainName || !secret) return
@@ -133,7 +168,7 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
     await registerDomain(fullDomainName, address, duration, secret, totalPrice)
   }
 
-  const isFormValid = domainName.length >= 3 && duration >= 1 && address && isConnected
+  const isFormValid = domainName.length >= 3 && duration >= 1 && address && isConnected && isAvailable === true
 
   return (
     <div className="p-6">
@@ -497,12 +532,12 @@ export default function RegisterDomain({ onSuccess, onNavigateToDomains }: Regis
                   <div className="w-full bg-amber-200 rounded-full h-4 shadow-inner">
                     <div 
                       className="bg-gradient-to-r from-amber-500 to-orange-500 h-4 rounded-full transition-all duration-1000 shadow-lg"
-                      style={{ width: `${Math.max(0, Math.min(100, ((60 - waitTime) / 60) * 100))}%` }}
+                      style={{ width: `${Math.max(0, Math.min(100, ((Number(minCommitmentAge || 60) - waitTime) / Number(minCommitmentAge || 60)) * 100))}%` }}
                     />
                   </div>
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-sm font-bold text-amber-900">
-                      {Math.max(0, Math.min(100, Math.round(((60 - waitTime) / 60) * 100)))}%
+                      {Math.max(0, Math.min(100, Math.round(((Number(minCommitmentAge || 60) - waitTime) / Number(minCommitmentAge || 60)) * 100)))}%
                     </span>
                   </div>
                 </div>

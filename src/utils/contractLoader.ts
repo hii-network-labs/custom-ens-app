@@ -9,13 +9,12 @@ const abiCache = new Map<string, any>()
 
 /**
  * Dynamically load contract ABI based on TLD configuration
- * @param tldConfig - TLD configuration containing abiFolder
+ * @param tldConfig - TLD configuration
  * @param contractType - Type of contract to load
  * @returns Promise resolving to the contract ABI
  */
 export async function loadContractABI(tldConfig: TLDConfig, contractType: ContractType): Promise<any> {
-  const abiFolder = tldConfig.abiFolder || 'hii' // Default to hii folder
-  const cacheKey = `${abiFolder}-${contractType}`
+  const cacheKey = contractType // Use contract type as cache key since ABIs are shared
   
   // Return cached ABI if available
   if (abiCache.has(cacheKey)) {
@@ -23,8 +22,8 @@ export async function loadContractABI(tldConfig: TLDConfig, contractType: Contra
   }
   
   try {
-    // Dynamically import the ABI file
-    const abiModule = await import(`@/contracts/ABIs/${abiFolder}/${contractType}.json`)
+    // Use shared ABI folder (hii) for all TLDs since contract interfaces are identical
+    const abiModule = await import(`@/contracts/ABIs/hii/${contractType}.json`)
     const abiData = abiModule.default || abiModule
     
     // Extract ABI array from the JSON structure
@@ -35,21 +34,7 @@ export async function loadContractABI(tldConfig: TLDConfig, contractType: Contra
     
     return abi
   } catch (error) {
-    console.error(`Failed to load ABI for ${contractType} in ${abiFolder}:`, error)
-    
-    // Fallback to hii folder if the specific folder fails
-    if (abiFolder !== 'hii') {
-      try {
-        const fallbackAbiModule = await import(`@/contracts/ABIs/hii/${contractType}.json`)
-        const fallbackAbiData = fallbackAbiModule.default || fallbackAbiModule
-        const abi = fallbackAbiData.abi || fallbackAbiData
-        abiCache.set(cacheKey, abi)
-        return abi
-      } catch (fallbackError) {
-        console.error(`Fallback ABI load also failed for ${contractType}:`, fallbackError)
-      }
-    }
-    
+    console.error(`Failed to load shared ABI for ${contractType}:`, error)
     throw new Error(`Could not load ABI for ${contractType}`)
   }
 }

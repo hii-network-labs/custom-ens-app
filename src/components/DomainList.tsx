@@ -188,7 +188,7 @@ export default function DomainList({ domains, loading, error, onRefresh }: Domai
                     <span className="text-sm font-medium text-gray-700">Owner</span>
                   </div>
                   <span className="text-sm font-mono text-gray-900">
-                    {domain.owner.id.slice(0, 6)}...{domain.owner.id.slice(-4)}
+                    {domain.owner?.id ? `${domain.owner.id.slice(0, 6)}...${domain.owner.id.slice(-4)}` : 'Unknown'}
                   </span>
                 </div>
                 

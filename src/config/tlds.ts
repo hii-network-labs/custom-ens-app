@@ -10,8 +10,6 @@ export interface TLDConfig {
   nameWrapper?: string
   publicResolver?: string
   isPrimary?: boolean
-  // Contract ABI folder name (matches folder in contracts/ABIs/)
-  abiFolder?: string
   // Default email for domain registration
   defaultEmail?: string
 }
@@ -27,7 +25,7 @@ function convertToTLDConfig(configData: TLDConfigData): TLDConfig {
     description: configData.description,
     color: configData.color,
     isPrimary: configData.isPrimary,
-    abiFolder: configData.abiFolder,
+
     registrarController: configData.contracts.registrarController,
     nameWrapper: configData.contracts.nameWrapper,
     publicResolver: configData.contracts.publicResolver,
@@ -70,14 +68,10 @@ export async function getSupportedTLDs(): Promise<string[]> {
   }
 }
 
-// Synchronous version for backward compatibility (uses environment fallback)
+// Synchronous version for backward compatibility (uses cached data)
 export function getSupportedTLDsSync(): string[] {
-  const envTLDs = process.env.NEXT_PUBLIC_SUPPORTED_TLDS
-  if (envTLDs) {
-    return envTLDs.split(',').map(tld => tld.trim())
-  }
-  // Fallback to cached data if available
-  return cachedTLDConfigs?.map(config => config.tld) || ['.hii', '.hi']
+  // Use cached data if available, otherwise fallback to default TLDs
+  return cachedTLDConfigs?.map(config => config.tld) || ['.hii', '.hi', '.t1']
 }
 
 // Get default TLD (first supported TLD or fallback)
